@@ -42,7 +42,7 @@
 
 /*
  * Full-panel success ambient — mounted on .success-overlay (not jar-local).
- * Washes the whole dark/light underlay as the jar fills.
+ * Soft continuous green illumination (no pulse / breath).
  */
 .panelAmbient {
   position: absolute;
@@ -52,7 +52,6 @@
   opacity: 0;
   border-radius: inherit;
   overflow: hidden;
-  will-change: opacity;
 }
 
 .panelAmbientTint {
@@ -60,39 +59,39 @@
   inset: 0;
   background: linear-gradient(
     165deg,
-    rgba(52, 211, 153, 0.2) 0%,
-    rgba(16, 185, 129, 0.12) 45%,
-    rgba(6, 78, 59, 0.16) 100%
+    rgba(52, 211, 153, 0.1) 0%,
+    rgba(16, 185, 129, 0.06) 48%,
+    rgba(6, 78, 59, 0.08) 100%
   );
 }
 
 .panelAmbientGlow {
   position: absolute;
-  inset: -10%;
+  inset: -8%;
   background: radial-gradient(
-    ellipse 70% 60% at 50% 38%,
-    rgba(110, 231, 183, 0.42) 0%,
-    rgba(52, 211, 153, 0.16) 45%,
-    transparent 72%
+    ellipse 72% 58% at 50% 42%,
+    rgba(110, 231, 183, 0.2) 0%,
+    rgba(52, 211, 153, 0.07) 48%,
+    transparent 74%
   );
-  filter: blur(28px);
+  filter: blur(36px);
 }
 
 .panelAmbient[data-theme="light"] .panelAmbientTint {
   background: linear-gradient(
     165deg,
-    rgba(167, 243, 208, 0.55) 0%,
-    rgba(110, 231, 183, 0.28) 45%,
-    rgba(209, 250, 229, 0.38) 100%
+    rgba(167, 243, 208, 0.42) 0%,
+    rgba(110, 231, 183, 0.2) 48%,
+    rgba(209, 250, 229, 0.28) 100%
   );
 }
 
 .panelAmbient[data-theme="light"] .panelAmbientGlow {
   background: radial-gradient(
-    ellipse 75% 65% at 50% 40%,
-    rgba(167, 243, 208, 0.72) 0%,
-    rgba(52, 211, 153, 0.28) 48%,
-    transparent 74%
+    ellipse 75% 62% at 50% 42%,
+    rgba(167, 243, 208, 0.5) 0%,
+    rgba(52, 211, 153, 0.18) 50%,
+    transparent 76%
   );
 }
 
@@ -103,7 +102,6 @@
   height: clamp(240px, 38vh, 300px);
   max-height: 100%;
   overflow: hidden;
-  filter: var(--scene-shadow);
 }
 
 .jarStack {
@@ -115,6 +113,7 @@
   aspect-ratio: 1;
   opacity: 1;
   visibility: visible;
+  filter: var(--scene-shadow);
 }
 
 .layer {
@@ -190,7 +189,8 @@
   top: 0;
   left: 0;
   transform-origin: center center;
-  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .coin img {
@@ -201,6 +201,8 @@
   pointer-events: none;
   user-select: none;
   -webkit-user-drag: none;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .pileCoin {
@@ -227,6 +229,7 @@
   overflow: hidden;
   visibility: hidden;
   border-radius: inherit;
+  isolation: isolate;
 }
 
 .flyLayer[data-ready="true"] {

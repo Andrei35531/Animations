@@ -25,17 +25,17 @@ export const INTERIOR_MASK = {
 export const MOUTH_ZONE = {
   /** Open rim lip on jar-base art (~0.077 of asset) */
   enterYRatio: 0.08,
-  /** Past shoulders — only then path may drift to seat */
-  neckExitYRatio: 0.3,
+  /** Past shoulders — only then path may drift to seat / switch to inside layer */
+  neckExitYRatio: 0.34,
   /** Outer mouth ≈ 20% of asset; funnel = central hole */
   openingRatio: 0.2,
-  funnelRatio: 0.55,
-  /** Last px above lip: X almost locked (nearly vertical drop) */
-  verticalLockPx: 80,
+  funnelRatio: 0.4,
+  /** Last px above lip: X locked (nearly vertical drop) */
+  verticalLockPx: 90,
   /** Start converging X toward mouth this far above the lip */
   funnelStartPx: 100,
   /** Local emitter half-width as fraction of mouth opening */
-  emitterMouthMul: 1.35,
+  emitterMouthMul: 1.05,
 } as const
 
 export const JAR_FLOOR_Y = 0.855
@@ -46,12 +46,13 @@ const INTERIOR_SPAN = JAR_FLOOR_Y - MOUTH_ZONE.enterYRatio
 export const TIMING = {
   jarEnter: 0.12,
   /** Short metallic settle — no cartoon bounce */
-  impactSettleMs: 110,
-  pileMicroSettleMs: 120,
-  landingSwapMs: 26,
+  impactSettleMs: 90,
+  pileMicroSettleMs: 90,
+  /** Hard cut after pose-matched handoff — no dual-frame ghost */
+  landingSwapMs: 0,
   jarPulseAt: 1.15,
-  /** Ambient residual after fill-synced pulses */
-  finalAmbientSettle: 0.34,
+  /** Calm final green ambient (no pulse peaks) */
+  finalAmbientSettle: 0.36,
   holdFinalUntil: 4.85,
 } as const
 
@@ -128,18 +129,13 @@ const EDGES: SpawnEdge[] = [
   "topRight",
 ]
 
-/** Deterministic dense local shower — ~1.8× prior count, ~25% tighter cadence */
+/** Deterministic dense local shower — enough landings to justify full pile */
 function buildDenseFlyingSequence(): FlyingCoinSpec[] {
-  // Accent → build-up → active → wind-down → final cluster
-  const delays: number[] = [
-    0.18, // hero
-    0.4, 0.47, 0.54, 0.6, 0.66, 0.72, 0.78, 0.84, 0.9,
-    0.96, 1.02, 1.08, 1.14, 1.2, 1.26, 1.32, 1.38, 1.44, 1.5,
-    1.56, 1.62, 1.68, 1.74, 1.8, 1.86, 1.92, 1.98, 2.04, 2.1,
-    2.18, 2.26, 2.36, 2.48, 2.62,
-    // final fill — still denser, completes the jar
-    2.9, 3.0, 3.1, 3.2, 3.3,
-  ]
+  const delays: number[] = [0.18]
+  // ~71 more coins, same overall window (~3.35s) — denser stream, same tempo feel
+  for (let t = 0.36; t <= 3.34; t += 0.042) {
+    delays.push(Math.round(t * 1000) / 1000)
+  }
 
   const coins: FlyingCoinSpec[] = []
   for (let i = 0; i < delays.length; i += 1) {
@@ -147,38 +143,36 @@ function buildDenseFlyingSequence(): FlyingCoinSpec[] {
     const edge = EDGES[i % EDGES.length]
     const seat = SEAT_POSITIONS[i % SEAT_POSITIONS.length]
     const isHero = i === 0
-    const isFinal = i >= delays.length - 5
+    const isFinal = i >= delays.length - 8
     const progressHint = (i + 1) / delays.length
 
-    // Faster falls; finals a touch calmer/readable
-    let duration = isHero ? 0.58 : isFinal ? 0.42 : 0.5
-    if (!isHero && !isFinal) duration = 0.46 + (i % 5) * 0.02
+    let duration = isHero ? 0.56 : isFinal ? 0.4 : 0.46
+    if (!isHero && !isFinal) duration = 0.42 + (i % 5) * 0.018
 
     const spinSign = i % 2 === 0 ? 1 : -1
-    const spinZ = spinSign * (70 + (i % 4) * 8)
-    const mouthOffset = ((i % 7) - 3) * 0.04
-    const arc = ((i % 5) - 2) * 0.08
-    const scale = isHero ? 1.05 : isFinal && i === delays.length - 1 ? 1.0 : 0.84 + (i % 6) * 0.02
+    const spinZ = spinSign * (24 + (i % 4) * 5)
+    const mouthOffset = ((i % 7) - 3) * 0.022
+    const arc = ((i % 5) - 2) * 0.03
+    const scale = isHero ? 1.04 : isFinal && i === delays.length - 1 ? 1.0 : 0.86 + (i % 5) * 0.02
 
     coins.push({
       id: i,
       asset: i % ASSETS.coins.length,
       edge: isFinal && i === delays.length - 1 ? "top" : edge,
-      spawnT: 0.28 + (i % 8) * 0.08,
+      spawnT: 0.3 + (i % 8) * 0.07,
       arc,
       mouthOffset,
       delay,
       duration,
-      startRotation: ((i % 5) - 2) * 4,
-      endRotation: ((i % 4) - 1.5) * 5,
+      startRotation: ((i % 5) - 2) * 3,
+      endRotation: ((i % 4) - 1.5) * 4,
       spinZ,
       scale,
       seat: {
         ...seat,
-        // Landing index drives fill; seat hint stays monotonic with sequence
-        revealAt: Math.min(1, 0.04 + progressHint * 0.96),
+        revealAt: Math.min(1, 0.03 + progressHint * 0.97),
       },
-      sound: isHero || isFinal || i % 4 === 0,
+      sound: isHero || isFinal || i % 3 === 0,
       hero: isHero,
       final: isFinal,
     })
@@ -227,25 +221,51 @@ function pickFlyingSequence(): FlyingCoinSpec[] {
 
 export const FLYING_SEQUENCE: FlyingCoinSpec[] = pickFlyingSequence()
 
-/**
- * Soft timeline floor for fill — kept slightly BEHIND expected landings
- * so the pile never jumps ahead of visible coins. Primary driver is landings.
- */
-export const PILE_FILL_KEYFRAMES: { time: number; progress: number }[] = [
-  { time: 0.85, progress: 0.08 },
-  { time: 1.15, progress: 0.18 },
-  { time: 1.45, progress: 0.3 },
-  { time: 1.75, progress: 0.42 },
-  { time: 2.05, progress: 0.55 },
-  { time: 2.35, progress: 0.66 },
-  { time: 2.65, progress: 0.76 },
-  { time: 2.95, progress: 0.85 },
-  { time: 3.2, progress: 0.92 },
-  { time: 3.55, progress: 1.0 },
-]
+const FLY_TOTAL = FLYING_SEQUENCE.length
 
-/** Progress thresholds that fire a green ambient pulse (synced to density) */
-export const AMBIENT_PULSE_AT: number[] = [0.12, 0.32, 0.52, 0.72, 0.9, 1.0]
+/**
+ * Fill stages unlock ONLY from landedCoinCount — never from timeline alone.
+ * Landed thresholds scale with the flying stream size.
+ */
+export const FILL_STAGE_THRESHOLDS: { landed: number; progress: number }[] = (
+  [
+    [0.04, 0.07],
+    [0.08, 0.14],
+    [0.14, 0.22],
+    [0.21, 0.32],
+    [0.3, 0.42],
+    [0.42, 0.52],
+    [0.53, 0.62],
+    [0.67, 0.72],
+    [0.8, 0.82],
+    [0.94, 0.92],
+    [1.0, 1.0],
+  ] as const
+).map(([frac, progress]) => ({
+  landed: Math.max(1, Math.round(frac * FLY_TOTAL)),
+  progress,
+}))
+
+/** Map landed count → fill progress via stage thresholds */
+export function progressFromLandedCount(landed: number, totalFlying: number) {
+  const n = Math.max(0, landed)
+  let progress = 0
+  for (const stage of FILL_STAGE_THRESHOLDS) {
+    if (n >= stage.landed) progress = stage.progress
+  }
+  if (totalFlying > 0 && n >= totalFlying) return 1
+  return Math.min(1, progress)
+}
+
+/** Soft-fill never pops coins above this Y without a landing match */
+export const SOFT_REVEAL_MAX_Y = 0.55
+
+/** Smooth ambient target opacity for fill progress 0…1 (no pulse peaks) */
+export function ambientOpacityForProgress(progress: number) {
+  const t = Math.max(0, Math.min(1, progress))
+  const eased = t * t * (3 - 2 * t)
+  return 0.04 + eased * (TIMING.finalAmbientSettle - 0.04)
+}
 
 export type RestingCoinSpec = {
   id: number
@@ -348,15 +368,10 @@ function buildRestingPile(): RestingCoinSpec[] {
       }
 
       if (lvl.topLayer) {
-        if (i === 0) rotation = 36
-        if (i === 1) rotation = -18
-        if (i === 2) rotation = 10
-        if (i === 3) rotation = -28
-        if (i === 4) rotation = 22
-        if (i === 5) {
-          rotation = -6
-          scale = 1.06
-        }
+        // Calm crown — keep density, drop wild angles that read as debris
+        const topRots = [14, -10, 6, -16, 10, -4]
+        rotation = topRots[i] ?? (seeded(id, 3) - 0.5) * 16
+        scale = 0.98 + seeded(id, 4) * 0.04
       }
 
       const depth = 0.84 + seeded(id, 7) * 0.16
@@ -381,7 +396,23 @@ function buildRestingPile(): RestingCoinSpec[] {
   return coins
 }
 
-export const RESTING_PILE = buildRestingPile()
+/** Bottom → top reveal order; positions/look unchanged — only unlock sequencing */
+function withLandingRevealOrder(coins: RestingCoinSpec[]): RestingCoinSpec[] {
+  const order = [...coins].sort((a, b) => b.y - a.y || a.x - b.x || a.id - b.id)
+  const n = Math.max(1, order.length)
+  order.forEach((coin, i) => {
+    coin.revealAt = (i + 1) / n
+  })
+  return coins
+}
+
+export const RESTING_PILE = withLandingRevealOrder(buildRestingPile())
+
+/** Prefer matching fly landings to lowest unfilled seats first */
+export const FILL_ORDER: RestingCoinSpec[] = [...RESTING_PILE].sort(
+  (a, b) => b.y - a.y || a.x - b.x || a.id - b.id,
+)
+
 export const COIN_SIZE = 64
 
 export const PILE_SETTLE_AT =
@@ -412,7 +443,7 @@ function cubicPoint(p0: Pt, p1: Pt, p2: Pt, p3: Pt, t: number): Pt {
 
 /**
  * Local top-down shower inside the success panel.
- * Spawn just above the panel → slight drift → align → vertical mouth drop → seat.
+ * Spawn → funnel → vertical mouth lock → short drop to seat.
  * All coords are local to the panel fly layer (not full viewport).
  */
 export function buildFlightPath(
@@ -428,60 +459,52 @@ export function buildFlightPath(
 ): Pt[] {
   const mouthOpening = jarW * MOUTH_ZONE.openingRatio
   const funnelHalf = (mouthOpening * MOUTH_ZONE.funnelRatio) / 2
-  const offset = Math.max(-0.65, Math.min(0.65, spec.mouthOffset))
+  const offset = Math.max(-0.55, Math.min(0.55, spec.mouthOffset))
   const entryX = mouth.x + offset * funnelHalf
 
   const funnelStartY = mouth.y - MOUTH_ZONE.funnelStartPx
   const verticalY = mouth.y - MOUTH_ZONE.verticalLockPx
-  const neckExitY = Math.max(
-    mouth.y + jarH * 0.14,
-    jarTop + jarH * MOUTH_ZONE.neckExitYRatio,
+  // Deep past shoulders before any seat X blend (safe for inside-layer handoff)
+  const columnEndY = Math.min(
+    seat.y - 8,
+    Math.max(mouth.y + jarH * 0.28, jarTop + jarH * MOUTH_ZONE.neckExitYRatio + jarH * 0.04),
   )
 
-  // Narrow local emitter — only above the jar mouth, not full screen
   const emitHalf = mouthOpening * MOUTH_ZONE.emitterMouthMul
   const lane =
     spec.edge === "left" || spec.edge === "topLeft"
-      ? -0.72 + spec.spawnT * 0.25
+      ? -0.62 + spec.spawnT * 0.22
       : spec.edge === "right" || spec.edge === "topRight"
-        ? 0.72 - spec.spawnT * 0.25
-        : (spec.spawnT - 0.5) * 1.15
+        ? 0.62 - spec.spawnT * 0.22
+        : (spec.spawnT - 0.5) * 1.0
 
-  let spawnX = mouth.x + lane * emitHalf + offset * funnelHalf * 0.35
-  // Keep spawn inside a tight band over the mouth
+  let spawnX = mouth.x + lane * emitHalf + offset * funnelHalf * 0.28
   spawnX = Math.max(mouth.x - emitHalf, Math.min(mouth.x + emitHalf, spawnX))
 
   if (spec.hero) {
-    spawnX = entryX - emitHalf * 0.25
+    spawnX = entryX - emitHalf * 0.18
   } else if (spec.final && spec.edge === "top") {
     spawnX = entryX
   }
 
   const spawn: Pt = { x: spawnX, y: emitterTop - coinSize * 0.15 }
-  // Gentle mid drift — still within emitter band
   const mid: Pt = {
-    x: lerp(spawnX, entryX, 0.45) + spec.arc * 6,
+    x: lerp(spawnX, entryX, 0.5) + spec.arc * 3.5,
     y: lerp(spawn.y, funnelStartY, 0.55),
   }
-  // Clamp mid X so we never arc outside the local shower
-  mid.x = Math.max(mouth.x - emitHalf * 1.05, Math.min(mouth.x + emitHalf * 1.05, mid.x))
+  mid.x = Math.max(mouth.x - emitHalf * 0.95, Math.min(mouth.x + emitHalf * 0.95, mid.x))
 
-  const funnelIn: Pt = { x: lerp(mid.x, entryX, 0.78), y: funnelStartY }
+  const funnelIn: Pt = { x: lerp(mid.x, entryX, 0.82), y: funnelStartY }
   const aligned: Pt = { x: entryX, y: verticalY }
   const lip: Pt = { x: entryX, y: mouth.y }
-  const neck: Pt = { x: entryX, y: Math.min(seat.y - 14, neckExitY) }
-  const drift: Pt = {
-    x: lerp(entryX, seat.x, 0.42),
-    y: lerp(neck.y, seat.y, 0.55),
-  }
+  const column: Pt = { x: entryX, y: columnEndY }
   const seatPt: Pt = { x: seat.x, y: seat.y }
-  const overshoot: Pt = { x: seat.x, y: seat.y + (spec.hero ? 2.6 : 2.1) }
-  const settled: Pt = { x: seat.x, y: seat.y }
 
-  const anchors = [spawn, mid, funnelIn, aligned, lip, neck, drift, seatPt, overshoot, settled]
+  // No mid-jar side drift / overshoot — those read as “hanging” through glass
+  const anchors = [spawn, mid, funnelIn, aligned, lip, column, seatPt]
   const samples: Pt[] = []
   const segs = anchors.length - 1
-  /** From `aligned` (index 3): nearly vertical through mouth */
+  /** From `aligned`: nearly vertical through mouth */
   const lockFrom = 3
 
   for (let i = 0; i < segs; i += 1) {
@@ -492,9 +515,14 @@ export function buildFlightPath(
 
     let c1: Pt
     let c2: Pt
-    if (i >= lockFrom) {
-      c1 = { x: p0.x, y: lerp(p0.y, p3.y, 0.34) }
-      c2 = { x: p3.x, y: lerp(p0.y, p3.y, 0.66) }
+    if (i >= lockFrom && i < segs - 1) {
+      // Strict vertical column through the mouth
+      c1 = { x: entryX, y: lerp(p0.y, p3.y, 0.34) }
+      c2 = { x: entryX, y: lerp(p0.y, p3.y, 0.66) }
+    } else if (i === segs - 1) {
+      // Only after columnEnd: short downward blend into seat (never sideways through glass)
+      c1 = { x: entryX, y: lerp(p0.y, p3.y, 0.45) }
+      c2 = { x: lerp(entryX, p3.x, 0.35), y: lerp(p0.y, p3.y, 0.78) }
     } else {
       c1 = {
         x: p0.x + (p3.x - prev.x) / 6,
@@ -505,7 +533,7 @@ export function buildFlightPath(
         y: p3.y - (next.y - p0.y) / 6,
       }
       if (i === lockFrom - 1) {
-        c1 = { x: lerp(c1.x, entryX, 0.6), y: c1.y }
+        c1 = { x: lerp(c1.x, entryX, 0.7), y: c1.y }
         c2 = { x: entryX, y: c2.y }
       }
     }
@@ -516,10 +544,10 @@ export function buildFlightPath(
       samples.push(cubicPoint(p0, c1, c2, p3, s / steps))
     }
   }
-  samples.push(settled)
+  samples.push(seatPt)
 
   for (const p of samples) {
-    if (p.y >= verticalY && p.y <= neck.y + 1) {
+    if (p.y >= verticalY && p.y <= columnEndY + 0.5) {
       p.x = entryX
     } else if (p.y >= funnelStartY && p.y < verticalY) {
       const t = smoothstep((p.y - funnelStartY) / Math.max(1, verticalY - funnelStartY))
@@ -530,14 +558,26 @@ export function buildFlightPath(
   return samples
 }
 
-/** Mild gravity ease-in for a heavy metal fall */
+/**
+ * Gravity fall that spends most time above the mouth, then drops through
+ * the jar quickly so coins never idle mid-bulb on the overlay.
+ */
 export function flightEase(t: number): number {
   const c = Math.max(0, Math.min(1, t))
-  const easeIn = c * c
-  return lerp(c, easeIn, 0.32)
+  // Ease-in for the approach, then accelerate hard past ~0.62
+  if (c < 0.62) {
+    const u = c / 0.62
+    return 0.7 * (u * u)
+  }
+  const u = (c - 0.62) / 0.38
+  return 0.7 + 0.3 * (1 - Math.pow(1 - u, 2.4))
 }
 
 export function findRestingMatch(seat: SeatPosition, used: Set<number>) {
+  // Prefer bottom-up fill order so landings build the pile from the floor
+  for (const coin of FILL_ORDER) {
+    if (!used.has(coin.id)) return coin
+  }
   let best: RestingCoinSpec | null = null
   let bestDist = Infinity
   for (const coin of RESTING_PILE) {
@@ -612,8 +652,15 @@ export function unlockCoinSounds(): boolean {
   coinSfxArmed = true
   ensureSfxPool()
   const ctx = getAudioCtx()
-  if (ctx && ctx.state !== "running") {
-    void ctx.resume()
+  if (ctx) {
+    // Resume must start inside the gesture; don't await
+    if (ctx.state !== "running") {
+      void ctx.resume().then(() => {
+        sfxUnlocked = true
+      })
+    } else {
+      sfxUnlocked = true
+    }
   }
   prefetchAudioBuffer()
 
@@ -630,28 +677,38 @@ export function unlockCoinSounds(): boolean {
         void p
           .then(() => {
             a.pause()
-            a.currentTime = 0
+            try {
+              a.currentTime = 0
+            } catch {
+              // ignore
+            }
             a.muted = false
-            a.volume = 0.72
+            a.volume = 0.85
+            sfxUnlocked = true
           })
           .catch(() => {
             a.muted = false
-            a.volume = 0.72
+            a.volume = 0.85
           })
       } else {
         a.pause()
-        a.currentTime = 0
+        try {
+          a.currentTime = 0
+        } catch {
+          // ignore
+        }
         a.muted = false
-        a.volume = 0.72
+        a.volume = 0.85
+        htmlOk = true
       }
       htmlOk = true
     } catch {
       a.muted = false
-      a.volume = 0.72
+      a.volume = 0.85
     }
   }
 
-  sfxUnlocked = htmlOk || ctx?.state === "running" || sfxUnlocked
+  sfxUnlocked = htmlOk || sfxUnlocked
   return sfxUnlocked
 }
 
@@ -661,7 +718,7 @@ export function primeCoinSounds() {
 }
 
 /** Keep each impact short so long mp3 tails don't outlive the shower */
-const IMPACT_TAIL_MS = 140
+const IMPACT_TAIL_MS = 160
 let coinSfxArmed = true
 let sfxCursor = 0
 const htmlClipTimers = new Map<HTMLAudioElement, number>()
@@ -687,13 +744,11 @@ function playViaHtmlAudio(vol: number) {
     const prev = htmlClipTimers.get(a)
     if (prev != null) window.clearTimeout(prev)
     a.muted = false
-    a.volume = Math.min(1, Math.max(0, vol))
-    if (a.readyState >= 2) {
-      try {
-        a.currentTime = 0
-      } catch {
-        // ignore
-      }
+    a.volume = Math.min(1, Math.max(0.05, vol))
+    try {
+      if (a.readyState >= 2) a.currentTime = 0
+    } catch {
+      // ignore
     }
     const p = a.play()
     const tid = window.setTimeout(() => {
@@ -706,7 +761,8 @@ function playViaHtmlAudio(vol: number) {
         silenceHtml(a)
       })
     }
-    return sfxUnlocked
+    // Treat as attempted — autoplay policy may still reject async
+    return true
   } catch {
     return false
   }
@@ -741,12 +797,10 @@ function playViaWebAudio(vol: number) {
 /** Impact thud on every landing */
 export function playCoinSound(index: number, _spec?: FlyingCoinSpec) {
   if (!coinSfxArmed) return
-  const vol = 0.72 + (index % 5) * 0.04
-  if (playViaWebAudio(vol)) return
+  const vol = 0.82 + (index % 5) * 0.03
+  // Prefer HTML pool unlocked by user gesture — more reliable than Web Audio timing
   if (playViaHtmlAudio(vol)) return
-  // Last resort: try unlock + pool again (may still fail without gesture)
-  unlockCoinSounds()
-  playViaHtmlAudio(vol)
+  if (playViaWebAudio(vol)) return
 }
 
 /** Arm impacts again (e.g. animation restart) */
