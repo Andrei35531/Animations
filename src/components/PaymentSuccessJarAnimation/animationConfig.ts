@@ -27,6 +27,11 @@ export const MOUTH_ZONE = {
   enterYRatio: 0.08,
   /** Past shoulders — only then path may drift to seat / switch to inside layer */
   neckExitYRatio: 0.34,
+  /**
+   * Hard-switch to masked interior only once the whole coin is below the neck.
+   * Earlier commit clips coins in half against the jar mask.
+   */
+  interiorCommitYRatio: 0.44,
   /** Outer mouth ≈ 20% of asset; funnel = central hole */
   openingRatio: 0.2,
   funnelRatio: 0.4,
@@ -703,7 +708,11 @@ export function buildFlightPath(
     spawnX = entryX
   }
 
-  const spawn: Pt = { x: spawnX, y: emitterTop - coinSize * 0.15 }
+  // Full sprite inside the panel — never start half-clipped at the top edge
+  const spawn: Pt = {
+    x: spawnX,
+    y: Math.max(coinSize * 0.55, emitterTop),
+  }
   const mid: Pt = {
     x: lerp(spawnX, entryX, 0.5) + spec.arc * 3.5,
     y: lerp(spawn.y, funnelStartY, 0.55),
@@ -772,6 +781,23 @@ export function buildFlightPath(
   }
 
   return samples
+}
+
+/**
+ * Switch to masked interior only when the full coin sprite is past the neck —
+ * prevents half-clipped coins against the jar mask.
+ */
+export function shouldCommitToInterior(
+  motionX: number,
+  motionY: number,
+  jar: { left: number; top: number; width: number; height: number },
+  coinSize: number,
+): boolean {
+  const mouthCx = jar.left + jar.width * 0.5
+  const mouthHalf = jar.width * MOUTH_ZONE.openingRatio * 0.5 * MOUTH_ZONE.funnelRatio
+  const coinTop = motionY - coinSize * 0.5
+  const clearY = jar.top + jar.height * MOUTH_ZONE.interiorCommitYRatio
+  return coinTop >= clearY && Math.abs(motionX - mouthCx) <= mouthHalf + coinSize * 0.4
 }
 
 /**

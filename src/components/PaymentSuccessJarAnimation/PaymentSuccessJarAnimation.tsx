@@ -25,6 +25,7 @@ import {
   buildFlightPath,
   findRestingMatch,
   findTimeoutMatch,
+  shouldCommitToInterior,
   FILL_ORDER,
   flightEase,
   progressFromLandedCount,
@@ -360,7 +361,7 @@ export function PaymentSuccessJarAnimation({
           const size = COIN_SIZE * spec.scale
           const mouth = mouthOf(jar)
           const seat = seatOf(jar, spec.seat)
-          const emitterTop = -size * 0.35
+          const emitterTop = size * 0.55
           const pathPts = buildFlightPath(
             spec,
             mouth,
@@ -844,7 +845,7 @@ export function PaymentSuccessJarAnimation({
           const size = COIN_SIZE * target.scale
           const mouth = mouthOf(jar)
           const seat = seatOf(jar, target)
-          const emitterTop = -size * 0.35
+          const emitterTop = size * 0.55
           const pathPts = buildFlightPath(
             spec,
             mouth,
@@ -899,10 +900,7 @@ export function PaymentSuccessJarAnimation({
           const syncVisuals = () => {
             if (!isLive()) return
             const { jar: j } = measure()
-            const mouthCx = j.left + j.width * 0.5
-            const mouthHalf = j.width * MOUTH_ZONE.openingRatio * 0.5 * MOUTH_ZONE.funnelRatio
-            const commitY = j.top + j.height * Math.max(MOUTH_ZONE.neckExitYRatio + 0.02, 0.36)
-            if (!inside && motion.y >= commitY && Math.abs(motion.x - mouthCx) <= mouthHalf + 8) {
+            if (!inside && shouldCommitToInterior(motion.x, motion.y, j, size)) {
               inside = true
             }
 
@@ -1239,7 +1237,7 @@ export function PaymentSuccessJarAnimation({
       const size = COIN_SIZE * target.scale
       const mouth = mouthOf(jar)
       const seat = seatOf(jar, target)
-      const emitterTop = -size * 0.35
+      const emitterTop = size * 0.55
       const pathPts = buildFlightPath(
         spec,
         mouth,
@@ -1294,15 +1292,11 @@ export function PaymentSuccessJarAnimation({
       const syncVisuals = () => {
         if (!isLive()) return
         const { jar: j } = measure()
-        const mouthCx = j.left + j.width * 0.5
-        const mouthHalf = j.width * MOUTH_ZONE.openingRatio * 0.5 * MOUTH_ZONE.funnelRatio
         /**
-         * Stay on unmasked overlay until past the neck. Inside the bulb, hard-switch
-         * to the masked interior layer so the coin sits behind front glass — never
-         * slides across the glass face toward the seat.
+         * Stay on unmasked overlay until the full coin is past the neck.
+         * Earlier handoff clips coins in half against the interior mask.
          */
-        const commitY = j.top + j.height * Math.max(MOUTH_ZONE.neckExitYRatio + 0.02, 0.36)
-        if (!inside && motion.y >= commitY && Math.abs(motion.x - mouthCx) <= mouthHalf + 8) {
+        if (!inside && shouldCommitToInterior(motion.x, motion.y, j, size)) {
           inside = true
         }
 
