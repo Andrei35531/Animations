@@ -44,17 +44,50 @@ export const JAR_FLOOR_Y = 0.855
 const INTERIOR_SPAN = JAR_FLOOR_Y - MOUTH_ZONE.enterYRatio
 
 export const TIMING = {
-  jarEnter: 0.12,
+  jarEnter: 0.1,
   /** Short metallic settle — no cartoon bounce */
-  impactSettleMs: 90,
-  pileMicroSettleMs: 90,
+  impactSettleMs: 80,
+  /** Final mass redistributes + settles after last coin */
+  pileMicroSettleMs: 220,
   /** Hard cut after pose-matched handoff — no dual-frame ghost */
   landingSwapMs: 0,
-  jarPulseAt: 1.15,
+  jarPulseAt: 1.05,
   /** Soft residual after fill-synced panel pulses */
-  finalAmbientSettle: 0.42,
-  holdFinalUntil: 4.85,
+  finalAmbientSettle: 0.4,
+  /** Total story ends calm ~3.1s (last land + settle) */
+  holdFinalUntil: 3.2,
 } as const
+
+/** Secondary bounce amplitude (px) on final impact — keep tiny */
+export const FINAL_SETTLE = {
+  impactY: 2.8,
+  neighborY: 1.35,
+  neighborCount: 12,
+  compressMs: 45,
+  riseMs: 90,
+  settleMs: 160,
+} as const
+
+/**
+ * Decline = same jar system, reject branch.
+ * Knobs to tune: rejectAt (when bounce reads), recoilY / recoilScale, bounceDuration.
+ */
+export const DECLINE_TIMING = {
+  /** Familiar success-like fall before reject (~400–500ms felt) */
+  rejectAt: 0.62,
+  /** Path progress at reject — near lip, not inside */
+  approachProgress: 0.64,
+  recoilY: 6,
+  recoilScale: 1.014,
+  recoilOut: 0.07,
+  recoilSettle: 0.32,
+  bounceDuration: 0.58,
+  redPeak: 0.58,
+  redSettle: 0.26,
+  holdUntil: 2.85,
+} as const
+
+export type JarAnimationVariant = "success" | "decline"
 
 export type SeatPosition = {
   x: number
@@ -129,13 +162,55 @@ const EDGES: SpawnEdge[] = [
   "topRight",
 ]
 
-/** Deterministic dense local shower — enough landings to justify full pile */
-function buildDenseFlyingSequence(): FlyingCoinSpec[] {
-  const delays: number[] = [0.18]
-  // ~71 more coins, same overall window (~3.35s) — denser stream, same tempo feel
-  for (let t = 0.36; t <= 3.34; t += 0.042) {
+/**
+ * Organic spawn rhythm — same coin count, non-uniform gaps.
+ * Busy open → main fill → taper → last 3 with readable pauses.
+ * Deterministic (no Math.random). Last spawn ~2.55s → land ~2.9s.
+ */
+function buildOrganicDelays(count: number): number[] {
+  const mainCount = Math.max(4, count - 3)
+  const start = 0.12
+  const mainEnd = 2.05
+
+  const weights: number[] = []
+  for (let i = 0; i < mainCount; i += 1) {
+    const u = i / Math.max(1, mainCount - 1)
+    let w = 1 + u * 0.35 + u * u * 1.1
+    if (i < 10) {
+      w *= 0.88 + (i % 3) * 0.06
+      if (i % 4 === 0) w *= 0.78
+    } else if (u < 0.62) {
+      w *= 0.92 + (i % 4) * 0.06
+      if (i % 7 === 0) w *= 0.58
+      if (i % 11 === 0) w *= 1.42
+      if (i % 13 === 0) w *= 1.15
+    } else {
+      w *= 1.15 + (i % 3) * 0.16
+      if (i % 5 === 0) w *= 1.25
+    }
+    weights.push(w)
+  }
+
+  const gapWeights = weights.slice(1)
+  const sum = gapWeights.reduce((a, b) => a + b, 0) || 1
+  const span = mainEnd - start
+  const delays: number[] = [start]
+  let t = start
+  for (let i = 0; i < gapWeights.length; i += 1) {
+    t += (gapWeights[i] / sum) * span
     delays.push(Math.round(t * 1000) / 1000)
   }
+
+  // Final trio — deliberate beats, not metronome
+  delays.push(Math.round((mainEnd + 0.12) * 1000) / 1000)
+  delays.push(Math.round((mainEnd + 0.28) * 1000) / 1000)
+  delays.push(Math.round((mainEnd + 0.46) * 1000) / 1000)
+  return delays.slice(0, count)
+}
+
+/** Deterministic dense local shower — enough landings to justify full pile */
+function buildDenseFlyingSequence(): FlyingCoinSpec[] {
+  const delays = buildOrganicDelays(72)
 
   const coins: FlyingCoinSpec[] = []
   for (let i = 0; i < delays.length; i += 1) {
@@ -143,22 +218,23 @@ function buildDenseFlyingSequence(): FlyingCoinSpec[] {
     const edge = EDGES[i % EDGES.length]
     const seat = SEAT_POSITIONS[i % SEAT_POSITIONS.length]
     const isHero = i === 0
-    const isFinal = i >= delays.length - 8
+    const isClosing = i >= delays.length - 3
+    const isFinal = i === delays.length - 1
     const progressHint = (i + 1) / delays.length
 
-    let duration = isHero ? 0.56 : isFinal ? 0.4 : 0.46
-    if (!isHero && !isFinal) duration = 0.42 + (i % 5) * 0.018
+    let duration = isHero ? 0.48 : isFinal ? 0.36 : isClosing ? 0.38 : 0.38
+    if (!isHero && !isClosing) duration = 0.34 + (i % 5) * 0.014
 
     const spinSign = i % 2 === 0 ? 1 : -1
     const spinZ = spinSign * (24 + (i % 4) * 5)
     const mouthOffset = ((i % 7) - 3) * 0.022
     const arc = ((i % 5) - 2) * 0.03
-    const scale = isHero ? 1.04 : isFinal && i === delays.length - 1 ? 1.0 : 0.86 + (i % 5) * 0.02
+    const scale = isHero ? 1.04 : isFinal ? 1.0 : 0.86 + (i % 5) * 0.02
 
     coins.push({
       id: i,
       asset: i % ASSETS.coins.length,
-      edge: isFinal && i === delays.length - 1 ? "top" : edge,
+      edge: isFinal ? "top" : edge,
       spawnT: 0.3 + (i % 8) * 0.07,
       arc,
       mouthOffset,
@@ -172,7 +248,7 @@ function buildDenseFlyingSequence(): FlyingCoinSpec[] {
         ...seat,
         revealAt: Math.min(1, 0.03 + progressHint * 0.97),
       },
-      sound: isHero || isFinal || i % 3 === 0,
+      sound: isHero || isClosing || i % 3 === 0,
       hero: isHero,
       final: isFinal,
     })
@@ -181,8 +257,8 @@ function buildDenseFlyingSequence(): FlyingCoinSpec[] {
 }
 
 /**
- * Dense controlled shower → full jar ~3.5s, final pulse ~3.9, calm by ~4.85.
- * Deterministic, no Math.random.
+ * Dense controlled shower — organic rhythm, calm by ~3.1s.
+ * Deterministic, no Math.random. Coin count unchanged (fill ↔ landings).
  */
 export const FLYING_SEQUENCE_FULL: FlyingCoinSpec[] = buildDenseFlyingSequence()
 
@@ -220,6 +296,46 @@ function pickFlyingSequence(): FlyingCoinSpec[] {
 }
 
 export const FLYING_SEQUENCE: FlyingCoinSpec[] = pickFlyingSequence()
+
+/**
+ * Three coins for decline — same art direction as success openers,
+ * staggered so the reject reads as a system refusal, not a pile.
+ */
+export const DECLINE_FLYING_SEQUENCE: FlyingCoinSpec[] = [
+  {
+    ...FLYING_SEQUENCE_FULL[0],
+    id: 0,
+    delay: 0.14,
+    duration: 0.72,
+    mouthOffset: -0.12,
+    edge: "topLeft",
+    hero: true,
+    final: false,
+    seat: { x: 0.5, y: MOUTH_ZONE.enterYRatio + 0.04, rotation: -8, scale: 1.02, revealAt: 1 },
+  },
+  {
+    ...FLYING_SEQUENCE_FULL[2],
+    id: 1,
+    delay: 0.26,
+    duration: 0.68,
+    mouthOffset: 0.1,
+    edge: "topRight",
+    hero: false,
+    final: false,
+    seat: { x: 0.5, y: MOUTH_ZONE.enterYRatio + 0.04, rotation: 10, scale: 0.96, revealAt: 1 },
+  },
+  {
+    ...FLYING_SEQUENCE_FULL[4],
+    id: 2,
+    delay: 0.36,
+    duration: 0.66,
+    mouthOffset: 0.02,
+    edge: "top",
+    hero: false,
+    final: false,
+    seat: { x: 0.5, y: MOUTH_ZONE.enterYRatio + 0.04, rotation: -4, scale: 0.98, revealAt: 1 },
+  },
+]
 
 const FLY_TOTAL = FLYING_SEQUENCE.length
 

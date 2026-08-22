@@ -8,7 +8,6 @@ import {
   OutcomeDemoSwitcher,
   type OutcomeDemoId,
 } from "./components/OutcomeDemoSwitcher/OutcomeDemoSwitcher"
-import { PaymentDeclinedDemo } from "./components/PaymentDeclinedDemo/PaymentDeclinedDemo"
 import { PaymentExpiredDemo } from "./components/PaymentExpiredDemo/PaymentExpiredDemo"
 import { primeCoinSounds, unlockCoinSounds } from "./components/PaymentSuccessJarAnimation/animationConfig"
 import { PaymentSuccessJarAnimation } from "./components/PaymentSuccessJarAnimation/PaymentSuccessJarAnimation"
@@ -109,11 +108,9 @@ export function PaySuccess() {
 
   const handleOutcomeChange = useCallback((next: OutcomeDemoId) => {
     setOutcome(next)
-    if (next === "success") {
-      // Remounted success panel starts fresh; arm play after gesture unlock
-      setJarPlay(true)
-      unlockCoinSounds()
-    }
+    // Fresh mount + play for whichever outcome is shown
+    setJarPlay(true)
+    unlockCoinSounds()
   }, [])
 
   async function copyOrderId() {
@@ -262,12 +259,19 @@ export function PaySuccess() {
                       className="success-overlay outcome-overlay--declined"
                       data-outcome="declined"
                     >
-                      <PaymentDeclinedDemo theme={theme} play />
+                      <PaymentSuccessJarAnimation theme={theme} play={jarPlay} variant="decline" />
                       <div className="status-block">
                         <h1 className="status-title">{copy.title}</h1>
                         <p className="status-subtitle">{copy.subtitle}</p>
                       </div>
-                      <button className="cta-btn cta-btn--declined" type="button">
+                      <button
+                        className="cta-btn cta-btn--declined"
+                        type="button"
+                        onClick={() => {
+                          unlockCoinSounds()
+                          setJarPlay(true)
+                        }}
+                      >
                         {copy.cta}
                       </button>
                     </div>

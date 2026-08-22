@@ -93,6 +93,51 @@
   );
 }
 
+/* Decline — same shell, red reject wash */
+.panelAmbient[data-variant="decline"] .panelAmbientTint {
+  background: linear-gradient(
+    165deg,
+    rgba(248, 113, 113, 0.22) 0%,
+    rgba(220, 38, 38, 0.14) 48%,
+    rgba(127, 29, 29, 0.16) 100%
+  );
+}
+
+.panelAmbient[data-variant="decline"] .panelAmbientGlow {
+  background: radial-gradient(
+    ellipse 80% 70% at 50% 45%,
+    rgba(252, 165, 165, 0.36) 0%,
+    rgba(239, 68, 68, 0.14) 48%,
+    transparent 72%
+  );
+}
+
+.panelAmbient[data-variant="decline"][data-theme="light"] .panelAmbientTint {
+  background: linear-gradient(
+    165deg,
+    rgba(254, 202, 202, 0.7) 0%,
+    rgba(252, 165, 165, 0.4) 45%,
+    rgba(254, 226, 226, 0.5) 100%
+  );
+}
+
+.panelAmbient[data-variant="decline"][data-theme="light"] .panelAmbientGlow {
+  background: radial-gradient(
+    ellipse 85% 75% at 50% 42%,
+    rgba(254, 202, 202, 0.85) 0%,
+    rgba(248, 113, 113, 0.28) 50%,
+    transparent 74%
+  );
+}
+
+.root[data-variant="decline"] {
+  --interior-tint: rgba(127, 29, 29, 0.08);
+}
+
+.root[data-variant="decline"].root--light {
+  --interior-tint: rgba(254, 202, 202, 0.12);
+}
+
 .scene {
   position: relative;
   z-index: 1;
