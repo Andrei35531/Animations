@@ -2,17 +2,17 @@ import jarBase from "../../assets/payment-success/jar-base.png"
 import jarGlassFront from "../../assets/payment-success/jar-glass-front.png"
 import jarInnerMask from "../../assets/payment-success/jar-inner-mask.png"
 import coin1 from "../../assets/payment-success/coins/coin-1.png"
-import coin2 from "../../assets/payment-success/coins/coin-2.png"
-import coin3 from "../../assets/payment-success/coins/coin-3.png"
+import coin2 from "../../assets/payment-success/coins/coin-2b.png"
+import coin3 from "../../assets/payment-success/coins/coin-3b.png"
 import coin4 from "../../assets/payment-success/coins/coin-4.png"
-import coin5 from "../../assets/payment-success/coins/coin-5.png"
 import coin6 from "../../assets/payment-success/coins/coin-6.png"
 
 export const ASSETS = {
   jarBase,
   jarGlassFront,
   jarInnerMask,
-  coins: [coin1, coin2, coin3, coin4, coin5, coin6] as const,
+  /** coin-5 omitted (edge-on rim = shard). coin-2/3 use cleaned *b cuts. */
+  coins: [coin1, coin2, coin3, coin4, coin6] as const,
 } as const
 
 export const INTERIOR_MASK = {
@@ -162,7 +162,7 @@ function buildDenseFlyingSequence(): FlyingCoinSpec[] {
 
     coins.push({
       id: i,
-      asset: i % 6,
+      asset: i % ASSETS.coins.length,
       edge: isFinal && i === delays.length - 1 ? "top" : edge,
       spawnT: 0.28 + (i % 8) * 0.08,
       arc,
@@ -323,8 +323,9 @@ function buildRestingPile(): RestingCoinSpec[] {
 
   for (const lvl of levels) {
     const half = jarHalfWidthAt(lvl.yBase)
-    const edgeInset = 0.072
-    const usableHalf = Math.max(0.11, half - edgeInset)
+    // Keep centers inset so the sprite disk stays inside the jar mask
+    const edgeInset = 0.13
+    const usableHalf = Math.max(0.1, half - edgeInset)
 
     for (let i = 0; i < lvl.count; i += 1) {
       const slot = lvl.count === 1 ? 0 : i / (lvl.count - 1) - 0.5
@@ -363,7 +364,7 @@ function buildRestingPile(): RestingCoinSpec[] {
 
       coins.push({
         id,
-        asset: id % 6,
+        asset: id % ASSETS.coins.length,
         x: Math.min(0.9, Math.max(0.1, x)),
         y: cy,
         rotation,
@@ -608,6 +609,7 @@ function prefetchAudioBuffer() {
  * Do not await before the muted play() — that drops the browser gesture token.
  */
 export function unlockCoinSounds(): boolean {
+  coinSfxArmed = true
   ensureSfxPool()
   const ctx = getAudioCtx()
   if (ctx && ctx.state !== "running") {
@@ -659,48 +661,52 @@ export function primeCoinSounds() {
 }
 
 /** Keep each impact short so long mp3 tails don't outlive the shower */
-const IMPACT_TAIL_MS = 110
+const IMPACT_TAIL_MS = 140
 let coinSfxArmed = true
-const activeHtmlClips: HTMLAudioElement[] = []
-const htmlClipTimers = new Set<number>()
+let sfxCursor = 0
+const htmlClipTimers = new Map<HTMLAudioElement, number>()
 const activeBufferSources: AudioBufferSourceNode[] = []
 
 function silenceHtml(a: HTMLAudioElement) {
   try {
     a.pause()
-    a.currentTime = 0
+    if (a.readyState >= 2) a.currentTime = 0
   } catch {
     // ignore
   }
 }
 
-function scheduleHtmlCut(a: HTMLAudioElement) {
-  const id = window.setTimeout(() => {
-    htmlClipTimers.delete(id)
-    silenceHtml(a)
-    const i = activeHtmlClips.indexOf(a)
-    if (i >= 0) activeHtmlClips.splice(i, 1)
-  }, IMPACT_TAIL_MS)
-  htmlClipTimers.add(id)
-}
-
 function playViaHtmlAudio(vol: number) {
   if (!coinSfxArmed) return false
+  const pool = ensureSfxPool()
+  if (!pool?.length) return false
+  // Must reuse gesture-unlocked pool elements — fresh Audio() stays silent
+  const a = pool[sfxCursor % pool.length]
+  sfxCursor += 1
   try {
-    const a = new Audio(COIN_SFX_SRC)
-    a.preload = "auto"
-    a.volume = Math.min(1, vol)
-    activeHtmlClips.push(a)
+    const prev = htmlClipTimers.get(a)
+    if (prev != null) window.clearTimeout(prev)
+    a.muted = false
+    a.volume = Math.min(1, Math.max(0, vol))
+    if (a.readyState >= 2) {
+      try {
+        a.currentTime = 0
+      } catch {
+        // ignore
+      }
+    }
     const p = a.play()
-    scheduleHtmlCut(a)
+    const tid = window.setTimeout(() => {
+      htmlClipTimers.delete(a)
+      silenceHtml(a)
+    }, IMPACT_TAIL_MS)
+    htmlClipTimers.set(a, tid)
     if (p && typeof p.then === "function") {
       p.catch(() => {
         silenceHtml(a)
-        const i = activeHtmlClips.indexOf(a)
-        if (i >= 0) activeHtmlClips.splice(i, 1)
       })
     }
-    return true
+    return sfxUnlocked
   } catch {
     return false
   }
@@ -713,10 +719,9 @@ function playViaWebAudio(vol: number) {
     const src = audioCtx.createBufferSource()
     const gain = audioCtx.createGain()
     src.buffer = sfxBuffer
-    // Short decay envelope — cut the long ring of the source file
     const t0 = audioCtx.currentTime
     const dur = IMPACT_TAIL_MS / 1000
-    gain.gain.setValueAtTime(vol, t0)
+    gain.gain.setValueAtTime(Math.max(0.001, vol), t0)
     gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur)
     src.connect(gain)
     gain.connect(audioCtx.destination)
@@ -736,9 +741,10 @@ function playViaWebAudio(vol: number) {
 /** Impact thud on every landing */
 export function playCoinSound(index: number, _spec?: FlyingCoinSpec) {
   if (!coinSfxArmed) return
-  const vol = 0.68 + (index % 5) * 0.04
+  const vol = 0.72 + (index % 5) * 0.04
   if (playViaWebAudio(vol)) return
   if (playViaHtmlAudio(vol)) return
+  // Last resort: try unlock + pool again (may still fail without gesture)
   unlockCoinSounds()
   playViaHtmlAudio(vol)
 }
@@ -751,13 +757,10 @@ export function armCoinSounds() {
 /** Hard-stop every coin clink — call when the shower ends */
 export function stopAllCoinSounds() {
   coinSfxArmed = false
-  for (const id of htmlClipTimers) {
-    window.clearTimeout(id)
+  for (const tid of htmlClipTimers.values()) {
+    window.clearTimeout(tid)
   }
   htmlClipTimers.clear()
-  for (const a of activeHtmlClips.splice(0)) {
-    silenceHtml(a)
-  }
   if (sfxPool) {
     for (const a of sfxPool) {
       silenceHtml(a)
