@@ -90,26 +90,27 @@ export const DECLINE_TIMING = {
 export type JarAnimationVariant = "success" | "decline" | "timeout"
 
 /**
- * Timeout = same jar system, slowdown → near-miss → mouth closure.
- * Knobs: closeAt, freezeProgress, driftDuration, coolPeak.
+ * Timeout = success shower until ~25% fill → hold → amber pulse → dissolve.
+ * Reuses success spawn/physics; ambient = success green system in amber.
  */
 export const TIMEOUT_TIMING = {
-  /** Early coins start losing momentum */
-  slowdownAt: 0.72,
-  /** Mouth closes / last coin freezes near lip */
-  closeAt: 2.48,
-  /** Path progress at freeze — almost in, never inside */
-  freezeProgress: 0.74,
-  /** Soft post-close drift (not a reject bounce) */
-  driftDuration: 0.58,
-  driftLift: 0.14,
-  ringIn: 0.22,
-  ringOut: 0.48,
-  ringPeakScale: 1.08,
-  coolPeak: 0.42,
-  coolSettle: 0.2,
-  holdUntil: 3.1,
+  /** Compress shower into this window so ~25% lands by ~1.4s */
+  showerEnd: 1.35,
+  /** Calm after last landing */
+  holdDuration: 0.4,
+  /** 1–2 soft pulse cycles (synced amber ambient) */
+  pulseDuration: 0.65,
+  pulseScale: 1.028,
+  pulseOpacity: 0.88,
+  ambientPulsePeak: 0.68,
+  ambientPulseMid: 0.3,
+  /** Slow in-place dissolve */
+  dissolveDuration: 0.7,
+  holdUntil: 3.35,
 } as const
+
+/** Visual fill target — bottom quarter of the resting pile height */
+export const TIMEOUT_FILL_FRAC = 0.25
 
 export type SeatPosition = {
   x: number
@@ -359,48 +360,6 @@ export const DECLINE_FLYING_SEQUENCE: FlyingCoinSpec[] = [
   },
 ]
 
-/**
- * Timeout — familiar openers, then decelerate; last coin almost reaches the lip.
- */
-export const TIMEOUT_FLYING_SEQUENCE: FlyingCoinSpec[] = [
-  {
-    ...FLYING_SEQUENCE_FULL[0],
-    id: 0,
-    delay: 0.14,
-    duration: 0.7,
-    mouthOffset: -0.1,
-    edge: "topLeft",
-    hero: true,
-    final: false,
-    sound: true,
-    seat: { x: 0.5, y: MOUTH_ZONE.enterYRatio + 0.04, rotation: -6, scale: 1.02, revealAt: 1 },
-  },
-  {
-    ...FLYING_SEQUENCE_FULL[2],
-    id: 1,
-    delay: 0.3,
-    duration: 0.75,
-    mouthOffset: 0.12,
-    edge: "topRight",
-    hero: false,
-    final: false,
-    sound: false,
-    seat: { x: 0.5, y: MOUTH_ZONE.enterYRatio + 0.04, rotation: 8, scale: 0.96, revealAt: 1 },
-  },
-  {
-    ...FLYING_SEQUENCE_FULL[1],
-    id: 2,
-    delay: 0.42,
-    duration: 1.85,
-    mouthOffset: 0.02,
-    edge: "top",
-    hero: false,
-    final: true,
-    sound: true,
-    seat: { x: 0.5, y: MOUTH_ZONE.enterYRatio + 0.03, rotation: -2, scale: 1.0, revealAt: 1 },
-  },
-]
-
 const FLY_TOTAL = FLYING_SEQUENCE.length
 
 /**
@@ -620,6 +579,55 @@ export const BODY_ORDER: RestingCoinSpec[] = FILL_ORDER.filter(
 export const CROWN_ORDER: RestingCoinSpec[] = FILL_ORDER.filter(
   (c) => c.surface || c.y <= TOP_SURFACE_Y,
 ).sort((a, b) => b.y - a.y || a.x - b.x || a.id - b.id)
+
+/**
+ * Bottom ~25% of pile height — timeout stops here (no further stream).
+ * fillTop in buildRestingPile is 0.365.
+ */
+const TIMEOUT_PILE_TOP_Y = JAR_FLOOR_Y - TIMEOUT_FILL_FRAC * (JAR_FLOOR_Y - 0.365)
+
+export const TIMEOUT_FILL_ORDER: RestingCoinSpec[] = FILL_ORDER.filter(
+  (c) => c.y >= TIMEOUT_PILE_TOP_Y,
+)
+
+/**
+ * Success shower truncated to the quarter-fill seats.
+ * Delays remapped into TIMEOUT_TIMING.showerEnd so the stream feels familiar but shorter.
+ */
+export const TIMEOUT_FLYING_SEQUENCE: FlyingCoinSpec[] = (() => {
+  const n = Math.min(FLYING_SEQUENCE.length, TIMEOUT_FILL_ORDER.length)
+  const src = FLYING_SEQUENCE.slice(0, n)
+  const lastDelay = Math.max(0.01, src[src.length - 1]?.delay ?? 1)
+  return src.map((coin, i) => {
+    const seat = TIMEOUT_FILL_ORDER[i]
+    const t = coin.delay / lastDelay
+    return {
+      ...coin,
+      id: i,
+      delay: Math.round((0.12 + t * (TIMEOUT_TIMING.showerEnd - 0.12)) * 1000) / 1000,
+      duration: Math.min(0.5, 0.36 + (i % 5) * 0.02),
+      seat: seat
+        ? {
+            x: seat.x,
+            y: seat.y,
+            rotation: seat.rotation,
+            scale: seat.scale,
+            revealAt: (i + 1) / n,
+          }
+        : coin.seat,
+      sound: i === 0 || i === n - 1 || i % 4 === 0,
+      hero: i === 0,
+      final: i === n - 1,
+    }
+  })
+})()
+
+export function findTimeoutMatch(used: Set<number>) {
+  for (const coin of TIMEOUT_FILL_ORDER) {
+    if (!used.has(coin.id)) return coin
+  }
+  return null
+}
 
 export const COIN_SIZE = 64
 

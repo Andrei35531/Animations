@@ -16,6 +16,7 @@ import {
   PILE_SETTLE_AT,
   RESTING_PILE,
   TIMEOUT_FLYING_SEQUENCE,
+  TIMEOUT_FILL_ORDER,
   TIMEOUT_TIMING,
   TIMING,
   TOP_SURFACE_Y,
@@ -23,6 +24,7 @@ import {
   ambientPulsePeakForProgress,
   buildFlightPath,
   findRestingMatch,
+  findTimeoutMatch,
   FILL_ORDER,
   flightEase,
   progressFromLandedCount,
@@ -40,7 +42,7 @@ import styles from "./PaymentSuccessJarAnimation.module.css"
 export type PaymentSuccessJarAnimationProps = {
   play?: boolean
   theme?: "light" | "dark"
-  /** success = fill jar; decline = reject; timeout = slowdown / near-miss / close */
+  /** success = fill jar; decline = reject; timeout = quarter-fill → amber pulse → dissolve */
   variant?: "success" | "decline" | "timeout"
   onComplete?: () => void
   className?: string
@@ -204,7 +206,6 @@ export function PaymentSuccessJarAnimation({
   const ambientRef = useRef<HTMLElement | null>(null)
   const flyLayerRef = useRef<HTMLElement | null>(null)
   const pileRefs = useRef<(HTMLDivElement | null)[]>([])
-  const mouthCloseRingRef = useRef<HTMLDivElement>(null)
   const runIdRef = useRef(0)
 
   const maskStyle = {
@@ -283,8 +284,8 @@ export function PaymentSuccessJarAnimation({
         }
       } else if (variant === "timeout") {
         if (ambient) {
-          ambient.dataset.active = "true"
-          gsap.set(ambient, { opacity: TIMEOUT_TIMING.coolSettle })
+          ambient.dataset.active = "false"
+          gsap.set(ambient, { opacity: 0 })
         }
       } else {
         for (let i = 0; i < RESTING_PILE.length; i += 1) {
@@ -572,9 +573,16 @@ export function PaymentSuccessJarAnimation({
       }
     }
 
-    // ── Timeout: familiar start → slowdown → near-miss → mouth close ──
+    // ── Timeout: quarter-fill → amber pulse → dissolve (jar ends empty) ─
     if (variant === "timeout") {
-      const mouthRing = mouthCloseRingRef.current
+      const glassTint = jarStack.querySelector(`.${styles.jarInteriorTint}`) as HTMLElement | null
+      const matchedTimeout = new Set<number>()
+      const revealedTimeout = new Set<number>()
+      let landedTimeoutCount = 0
+      const totalTimeoutFlying = Math.max(1, TIMEOUT_FLYING_SEQUENCE.length)
+      const beat = TIMEOUT_TIMING.pulseDuration / 4
+      let finaleStarted = false
+
       const ctx = gsap.context(() => {
         const master = gsap.timeline({
           onComplete: () => {
@@ -585,9 +593,7 @@ export function PaymentSuccessJarAnimation({
         })
 
         if (ambient) gsap.set(ambient, { opacity: 0 })
-        if (mouthRing) {
-          gsap.set(mouthRing, { opacity: 0, scale: 0.82, xPercent: -50, yPercent: -50 })
-        }
+        if (glassTint) gsap.set(glassTint, { opacity: 0.85 })
 
         master.fromTo(
           jarStack,
@@ -596,11 +602,248 @@ export function PaymentSuccessJarAnimation({
           0,
         )
 
-        const spawnTimeoutCoin = (spec: FlyingCoinSpec, index: number) => {
+        const revealTimeoutPile = (targetCount: number, skipIds?: Set<number>) => {
+          if (!isLive()) return
+          const n = Math.min(targetCount, TIMEOUT_FILL_ORDER.length)
+          for (let i = 0; i < n; i += 1) {
+            const coin = TIMEOUT_FILL_ORDER[i]
+            if (!coin || revealedTimeout.has(coin.id)) continue
+            if (skipIds?.has(coin.id)) continue
+            revealedTimeout.add(coin.id)
+            const el = pileRefs.current[coin.id]
+            if (!el) continue
+            const brightness = 1 + coin.shade
+            el.style.left = `${coin.x * 100}%`
+            el.style.top = `${coin.y * 100}%`
+            el.dataset.revealed = "true"
+            gsap.set(el, {
+              visibility: "visible",
+              rotation: coin.rotation,
+              scale: 1,
+              x: 0,
+              y: 0,
+              filter: `brightness(${brightness})`,
+            })
+            gsap.to(el, {
+              opacity: coin.depth,
+              duration: 0.1,
+              ease: "power2.out",
+            })
+          }
+        }
+
+        const scheduleTimeoutFinale = () => {
+          if (!isLive() || finaleStarted) return
+          finaleStarted = true
+          const pulseAt = master.time() + TIMEOUT_TIMING.holdDuration
+          const dissolveAt = pulseAt + TIMEOUT_TIMING.pulseDuration
+          const clearAt = dissolveAt + TIMEOUT_TIMING.dissolveDuration
+
+          master.call(
+            () => {
+              if (!isLive()) return
+              for (const id of revealedTimeout) {
+                const el = pileRefs.current[id]
+                if (!el) continue
+                const coin = TIMEOUT_FILL_ORDER.find((c) => c.id === id)
+                const baseOp = coin?.depth ?? 1
+                gsap.fromTo(
+                  el,
+                  { scale: 1, opacity: baseOp },
+                  {
+                    scale: TIMEOUT_TIMING.pulseScale,
+                    opacity: TIMEOUT_TIMING.pulseOpacity,
+                    duration: beat,
+                    ease: "sine.inOut",
+                    yoyo: true,
+                    repeat: 3,
+                  },
+                )
+              }
+            },
+            [],
+            pulseAt,
+          )
+
+          if (ambient) {
+            master.call(() => {
+              ambient.dataset.active = "true"
+            }, [], pulseAt)
+            master.to(
+              ambient,
+              { opacity: TIMEOUT_TIMING.ambientPulsePeak, duration: beat, ease: "sine.inOut" },
+              pulseAt,
+            )
+            master.to(
+              ambient,
+              { opacity: TIMEOUT_TIMING.ambientPulseMid, duration: beat, ease: "sine.inOut" },
+              pulseAt + beat,
+            )
+            master.to(
+              ambient,
+              {
+                opacity: TIMEOUT_TIMING.ambientPulsePeak * 0.85,
+                duration: beat,
+                ease: "sine.inOut",
+              },
+              pulseAt + beat * 2,
+            )
+            master.to(
+              ambient,
+              {
+                opacity: TIMEOUT_TIMING.ambientPulseMid * 0.75,
+                duration: beat,
+                ease: "sine.inOut",
+              },
+              pulseAt + beat * 3,
+            )
+            master.to(
+              ambient,
+              { opacity: 0, duration: TIMEOUT_TIMING.dissolveDuration, ease: "sine.inOut" },
+              dissolveAt,
+            )
+          }
+
+          if (glassTint) {
+            const baseTint = 0.85
+            master.to(glassTint, { opacity: 1, duration: beat, ease: "sine.inOut" }, pulseAt)
+            master.to(
+              glassTint,
+              { opacity: baseTint, duration: beat, ease: "sine.inOut" },
+              pulseAt + beat,
+            )
+            master.to(
+              glassTint,
+              { opacity: 0.98, duration: beat, ease: "sine.inOut" },
+              pulseAt + beat * 2,
+            )
+            master.to(
+              glassTint,
+              { opacity: baseTint, duration: beat, ease: "sine.inOut" },
+              pulseAt + beat * 3,
+            )
+          }
+
+          master.call(
+            () => {
+              if (!isLive()) return
+              for (const id of revealedTimeout) {
+                const el = pileRefs.current[id]
+                if (!el) continue
+                gsap.killTweensOf(el)
+                gsap.to(el, {
+                  opacity: 0,
+                  duration: TIMEOUT_TIMING.dissolveDuration,
+                  ease: "sine.inOut",
+                })
+              }
+            },
+            [],
+            dissolveAt,
+          )
+
+          master.call(
+            () => {
+              if (!isLive()) return
+              for (const id of revealedTimeout) {
+                const el = pileRefs.current[id]
+                if (!el) continue
+                gsap.killTweensOf(el)
+                el.dataset.revealed = "false"
+                gsap.set(el, {
+                  opacity: 0,
+                  visibility: "hidden",
+                  scale: 1,
+                  x: 0,
+                  y: 0,
+                  filter: "none",
+                })
+              }
+              revealedTimeout.clear()
+              flyLayer.innerHTML = ""
+              fallingInside.innerHTML = ""
+              root.dataset.empty = "true"
+              stopAllCoinSounds()
+              if (ambient) {
+                gsap.set(ambient, { opacity: 0 })
+                ambient.dataset.active = "false"
+              }
+            },
+            [],
+            clearAt,
+          )
+
+          master.to(
+            {},
+            { duration: Math.max(0.08, TIMEOUT_TIMING.holdUntil - clearAt) },
+            clearAt,
+          )
+        }
+
+        const landTimeoutSwap = (
+          spec: FlyingCoinSpec,
+          visuals: HTMLElement[],
+          match: RestingCoinSpec | null,
+        ) => {
+          if (!isLive()) return
+          landedTimeoutCount += 1
+
+          for (const el of visuals) {
+            gsap.killTweensOf(el)
+            gsap.set(el, { opacity: 0, visibility: "hidden" })
+            el.dataset.airborne = "false"
+          }
+
+          if (match) {
+            revealedTimeout.add(match.id)
+            const el = pileRefs.current[match.id]
+            if (el) {
+              el.style.left = `${match.x * 100}%`
+              el.style.top = `${match.y * 100}%`
+              el.dataset.revealed = "true"
+              const brightness = 1 + match.shade
+              gsap.set(el, {
+                xPercent: -50,
+                yPercent: -50,
+                x: 0,
+                y: 0,
+                rotation: match.rotation,
+                scale: 1,
+                opacity: match.depth,
+                visibility: "visible",
+                filter: `brightness(${brightness})`,
+              })
+            }
+          }
+
+          root.dataset.empty = "false"
+          revealTimeoutPile(landedTimeoutCount, match ? new Set([match.id]) : undefined)
+
+          if (landedTimeoutCount >= totalTimeoutFlying) {
+            scheduleTimeoutFinale()
+          }
+
+          void spec
+        }
+
+        const spawnTimeoutCoin = (spec: FlyingCoinSpec) => {
+          if (!spec?.seat) return gsap.timeline()
           const { jar } = measure()
-          const size = COIN_SIZE * spec.scale
+
+          const match = findTimeoutMatch(matchedTimeout)
+          if (match) matchedTimeout.add(match.id)
+
+          const target = match ?? {
+            x: spec.seat.x,
+            y: spec.seat.y,
+            rotation: spec.seat.rotation,
+            scale: spec.seat.scale,
+            asset: spec.asset,
+          }
+
+          const size = COIN_SIZE * target.scale
           const mouth = mouthOf(jar)
-          const seat = seatOf(jar, spec.seat)
+          const seat = seatOf(jar, target)
           const emitterTop = -size * 0.35
           const pathPts = buildFlightPath(
             spec,
@@ -615,21 +858,26 @@ export function PaymentSuccessJarAnimation({
           const spawn = pathPts[0]
           if (!spawn) return gsap.timeline()
 
-          const coinFly = document.createElement("div")
-          coinFly.className = `${styles.coin} ${styles.flyingCoin}`
+          const assetIndex = "asset" in target ? target.asset : spec.asset
+          const coinFly = makeCoinEl(assetIndex, size, `${styles.coin} ${styles.flyingCoin}`)
+          const coinInside = makeCoinEl(assetIndex, size, `${styles.coin} ${styles.flyingCoin}`)
           coinFly.dataset.airborne = "false"
-          coinFly.style.width = `${size}px`
-          coinFly.style.height = `${size}px`
-          const img = document.createElement("img")
-          img.src = ASSETS.coins[spec.asset]
-          img.alt = ""
-          img.draggable = false
-          coinFly.appendChild(img)
+          coinInside.dataset.airborne = "false"
           flyLayer.appendChild(coinFly)
+          fallingInside.appendChild(coinInside)
 
           gsap.set(coinFly, {
             x: spawn.x - size / 2,
             y: spawn.y - size / 2,
+            rotation: spec.startRotation,
+            scale: 1,
+            opacity: 0,
+            visibility: "hidden",
+            force3D: true,
+          })
+          gsap.set(coinInside, {
+            x: spawn.x - jar.left - size / 2,
+            y: spawn.y - jar.top - size / 2,
             rotation: spec.startRotation,
             scale: 1,
             opacity: 0,
@@ -646,6 +894,43 @@ export function PaymentSuccessJarAnimation({
             opacity: 0,
           }
 
+          let inside = false
+
+          const syncVisuals = () => {
+            if (!isLive()) return
+            const { jar: j } = measure()
+            const mouthCx = j.left + j.width * 0.5
+            const mouthHalf = j.width * MOUTH_ZONE.openingRatio * 0.5 * MOUTH_ZONE.funnelRatio
+            const commitY = j.top + j.height * Math.max(MOUTH_ZONE.neckExitYRatio + 0.02, 0.36)
+            if (!inside && motion.y >= commitY && Math.abs(motion.x - mouthCx) <= mouthHalf + 8) {
+              inside = true
+            }
+
+            if (!inside) {
+              gsap.set(coinFly, {
+                x: motion.x - size / 2,
+                y: motion.y - size / 2,
+                rotation: motion.rotation,
+                scale: motion.scale,
+                opacity: motion.opacity,
+                visibility: motion.opacity > 0.02 ? "visible" : "hidden",
+                force3D: true,
+              })
+              gsap.set(coinInside, { opacity: 0, visibility: "hidden" })
+            } else {
+              gsap.set(coinFly, { opacity: 0, visibility: "hidden" })
+              gsap.set(coinInside, {
+                x: motion.x - j.left - size / 2,
+                y: motion.y - j.top - size / 2,
+                rotation: motion.rotation,
+                scale: motion.scale,
+                opacity: motion.opacity,
+                visibility: motion.opacity > 0.02 ? "visible" : "hidden",
+                force3D: true,
+              })
+            }
+          }
+
           const samplePath = (p: number) => {
             const pts = pathPts
             const n = pts.length - 1
@@ -657,229 +942,72 @@ export function PaymentSuccessJarAnimation({
             const b = pts[i + 1]
             motion.x = a.x + (b.x - a.x) * s
             motion.y = a.y + (b.y - a.y) * s
-            motion.rotation = spec.startRotation + spec.spinZ * p * 0.35
+            const align = Math.max(0, Math.min(1, (p - 0.78) / 0.22))
+            const flightSpin = spec.startRotation + spec.spinZ * Math.min(1, p / 0.78)
+            motion.rotation = flightSpin + (target.rotation - flightSpin) * align
+            motion.scale = 1
+            if (p >= 0.992) {
+              motion.x = seat.x
+              motion.y = seat.y
+              motion.rotation = target.rotation
+            }
           }
 
-          const sync = () => {
-            if (!isLive()) return
-            gsap.set(coinFly, {
-              x: motion.x - size / 2,
-              y: motion.y - size / 2,
-              rotation: motion.rotation,
-              scale: motion.scale,
-              opacity: motion.opacity,
-              visibility: motion.opacity > 0.02 ? "visible" : "hidden",
-              force3D: true,
-            })
-          }
-
-          const isFinal = Boolean(spec.final)
-          const side = index === 0 ? -1 : index === 1 ? 1 : 0.08
-          const coinTl = gsap.timeline({ delay: spec.delay })
-
-          coinTl.call(() => {
-            coinFly.dataset.airborne = "true"
+          const coinTl = gsap.timeline({
+            delay: spec.delay,
+            onStart: () => {
+              if (!isLive()) return
+              coinFly.dataset.airborne = "true"
+              coinInside.dataset.airborne = "true"
+            },
           })
 
           coinTl.to(
             motion,
             {
               opacity: 1,
-              duration: 0.04,
+              duration: 0.03,
               ease: "none",
-              onUpdate: sync,
+              onUpdate: syncVisuals,
             },
             0,
           )
 
-          if (isFinal) {
-            // Familiar fall, then heavy decelerate into near-miss at the lip
-            const crawlStart = 0.42
-            coinTl.to(
-              motion,
-              {
-                progress: crawlStart,
-                duration: Math.max(0.35, TIMEOUT_TIMING.slowdownAt - spec.delay),
-                ease: flightEase,
-                onUpdate: () => {
-                  samplePath(motion.progress)
-                  sync()
-                },
+          coinTl.to(
+            motion,
+            {
+              progress: 1,
+              duration: spec.duration,
+              ease: flightEase,
+              onUpdate: () => {
+                samplePath(motion.progress)
+                syncVisuals()
               },
-              0,
-            )
+            },
+            0,
+          )
 
-            const crawlLocal = Math.max(0, TIMEOUT_TIMING.slowdownAt - spec.delay)
-            const crawlDur = Math.max(
-              0.4,
-              TIMEOUT_TIMING.closeAt - TIMEOUT_TIMING.slowdownAt,
-            )
-            coinTl.to(
-              motion,
-              {
-                progress: TIMEOUT_TIMING.freezeProgress,
-                duration: crawlDur,
-                ease: "power3.out",
-                onUpdate: () => {
-                  samplePath(motion.progress)
-                  sync()
-                },
-              },
-              crawlLocal,
-            )
-
-            // Soft drift after window closes — missed, not rejected
-            const closeLocal = Math.max(0, TIMEOUT_TIMING.closeAt - spec.delay)
-            coinTl.call(
-              () => {
-                if (!isLive()) return
-                playCoinSound(spec.id, { ...spec, sound: true })
-                samplePath(TIMEOUT_TIMING.freezeProgress)
-                sync()
-                const outX = mouth.x + side * jar.width * 0.12
-                const outY = motion.y - jar.height * TIMEOUT_TIMING.driftLift
-                gsap.to(motion, {
-                  x: outX,
-                  y: outY,
-                  rotation: motion.rotation + side * 18,
-                  opacity: 0,
-                  duration: TIMEOUT_TIMING.driftDuration,
-                  ease: "sine.out",
-                  onUpdate: sync,
-                  onComplete: () => coinFly.remove(),
-                })
-              },
-              [],
-              closeLocal,
-            )
-            coinTl.to({}, { duration: TIMEOUT_TIMING.driftDuration }, closeLocal)
-          } else {
-            // Early coins: familiar start, then lose momentum and fade away
-            const peakProgress = index === 0 ? 0.4 : 0.52
-            const approachDur = Math.min(
-              spec.duration * peakProgress,
-              Math.max(0.28, TIMEOUT_TIMING.slowdownAt - spec.delay + 0.15),
-            )
-            coinTl.to(
-              motion,
-              {
-                progress: peakProgress,
-                duration: approachDur,
-                ease: flightEase,
-                onUpdate: () => {
-                  samplePath(motion.progress)
-                  sync()
-                },
-              },
-              0,
-            )
-
-            const fadeLocal = Math.max(0.2, approachDur * 0.85)
-            coinTl.call(
-              () => {
-                if (!isLive()) return
-                if (spec.sound) playCoinSound(spec.id, spec)
-                const outX = motion.x + side * jar.width * 0.18
-                const outY = motion.y - jar.height * (0.08 + index * 0.04)
-                gsap.to(motion, {
-                  x: outX,
-                  y: outY,
-                  opacity: 0,
-                  duration: 0.7 + index * 0.12,
-                  ease: "sine.out",
-                  onUpdate: sync,
-                  onComplete: () => coinFly.remove(),
-                })
-              },
-              [],
-              fadeLocal,
-            )
-            coinTl.to({}, { duration: 0.85 }, fadeLocal)
-          }
+          coinTl.call(() => {
+            samplePath(1)
+            syncVisuals()
+            if (isLive()) playCoinSound(spec.id, spec)
+            landTimeoutSwap(spec, [coinFly, coinInside], match)
+            coinFly.remove()
+            coinInside.remove()
+          })
 
           return coinTl
         }
 
         for (let i = 0; i < TIMEOUT_FLYING_SEQUENCE.length; i += 1) {
-          master.add(spawnTimeoutCoin(TIMEOUT_FLYING_SEQUENCE[i], i), 0)
+          master.add(spawnTimeoutCoin(TIMEOUT_FLYING_SEQUENCE[i]), 0)
         }
-
-        // Mouth-closure ring — delicate “window closed” signal
-        if (mouthRing) {
-          master.fromTo(
-            mouthRing,
-            { opacity: 0, scale: 0.82, xPercent: -50, yPercent: -50 },
-            {
-              opacity: 0.9,
-              scale: TIMEOUT_TIMING.ringPeakScale,
-              xPercent: -50,
-              yPercent: -50,
-              duration: TIMEOUT_TIMING.ringIn,
-              ease: "sine.out",
-            },
-            TIMEOUT_TIMING.closeAt,
-          )
-          master.to(
-            mouthRing,
-            {
-              opacity: 0,
-              scale: 1.14,
-              xPercent: -50,
-              yPercent: -50,
-              duration: TIMEOUT_TIMING.ringOut,
-              ease: "sine.inOut",
-            },
-            TIMEOUT_TIMING.closeAt + TIMEOUT_TIMING.ringIn,
-          )
-        }
-
-        // Cool / neutral ambient — not red, not green
-        if (ambient) {
-          master.call(() => {
-            ambient.dataset.active = "true"
-          }, [], TIMEOUT_TIMING.closeAt)
-          master.to(
-            ambient,
-            { opacity: TIMEOUT_TIMING.coolPeak, duration: 0.32, ease: "sine.out" },
-            TIMEOUT_TIMING.closeAt,
-          )
-          master.to(
-            ambient,
-            { opacity: TIMEOUT_TIMING.coolSettle, duration: 0.55, ease: "sine.inOut" },
-            TIMEOUT_TIMING.closeAt + 0.32,
-          )
-        }
-
-        // Keep jar empty — never reveal pile
-        master.call(
-          () => {
-            if (!isLive()) return
-            root.dataset.empty = "true"
-            flyLayer.innerHTML = ""
-            fallingInside.innerHTML = ""
-            stopAllCoinSounds()
-          },
-          [],
-          TIMEOUT_TIMING.closeAt + TIMEOUT_TIMING.driftDuration + 0.04,
-        )
-
-        master.to(
-          {},
-          {
-            duration: Math.max(
-              0.15,
-              TIMEOUT_TIMING.holdUntil - TIMEOUT_TIMING.closeAt - TIMEOUT_TIMING.driftDuration,
-            ),
-          },
-          TIMEOUT_TIMING.closeAt + TIMEOUT_TIMING.driftDuration,
-        )
       }, scene)
 
       return () => {
         runIdRef.current += 1
         ctx.revert()
         forceEmptyState(root, jarStack, fallingInside, ambient, pileEls, flyLayer)
-        if (mouthRing) gsap.set(mouthRing, { opacity: 0, scale: 0.82, xPercent: -50, yPercent: -50 })
         root.dataset.ready = "true"
         flyLayer.dataset.ready = "true"
       }
@@ -1435,9 +1563,7 @@ export function PaymentSuccessJarAnimation({
           </div>
 
           <div className={styles.jarInteriorTint} aria-hidden />
-          {variant === "timeout" ? (
-            <div ref={mouthCloseRingRef} className={styles.mouthCloseRing} aria-hidden />
-          ) : null}
+
 
           <div className={`${styles.layer} ${styles.jarGlassFront}`}>
             <img src={ASSETS.jarGlassFront} alt="" draggable={false} />
