@@ -8,7 +8,6 @@ import {
   OutcomeDemoSwitcher,
   type OutcomeDemoId,
 } from "./components/OutcomeDemoSwitcher/OutcomeDemoSwitcher"
-import { PaymentExpiredDemo } from "./components/PaymentExpiredDemo/PaymentExpiredDemo"
 import { primeCoinSounds, unlockCoinSounds } from "./components/PaymentSuccessJarAnimation/animationConfig"
 import { PaymentSuccessJarAnimation } from "./components/PaymentSuccessJarAnimation/PaymentSuccessJarAnimation"
 import { useViewportScale } from "./hooks/useViewportScale"
@@ -283,12 +282,19 @@ export function PaySuccess() {
                       className="success-overlay outcome-overlay--expired"
                       data-outcome="expired"
                     >
-                      <PaymentExpiredDemo theme={theme} play />
+                      <PaymentSuccessJarAnimation theme={theme} play={jarPlay} variant="timeout" />
                       <div className="status-block">
                         <h1 className="status-title">{copy.title}</h1>
                         <p className="status-subtitle">{copy.subtitle}</p>
                       </div>
-                      <button className="cta-btn cta-btn--expired" type="button">
+                      <button
+                        className="cta-btn cta-btn--expired"
+                        type="button"
+                        onClick={() => {
+                          unlockCoinSounds()
+                          setJarPlay(true)
+                        }}
+                      >
                         {copy.cta}
                       </button>
                     </div>

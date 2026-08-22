@@ -138,6 +138,76 @@
   --interior-tint: rgba(254, 202, 202, 0.12);
 }
 
+/* Timeout — cool / neutral closure wash (not error red, not success green) */
+.panelAmbient[data-variant="timeout"] .panelAmbientTint {
+  background: linear-gradient(
+    165deg,
+    rgba(148, 163, 184, 0.2) 0%,
+    rgba(100, 116, 139, 0.14) 48%,
+    rgba(71, 85, 105, 0.16) 100%
+  );
+}
+
+.panelAmbient[data-variant="timeout"] .panelAmbientGlow {
+  background: radial-gradient(
+    ellipse 80% 70% at 50% 45%,
+    rgba(203, 213, 225, 0.28) 0%,
+    rgba(148, 163, 184, 0.12) 48%,
+    transparent 72%
+  );
+}
+
+.panelAmbient[data-variant="timeout"][data-theme="light"] .panelAmbientTint {
+  background: linear-gradient(
+    165deg,
+    rgba(226, 232, 240, 0.75) 0%,
+    rgba(203, 213, 225, 0.45) 45%,
+    rgba(241, 245, 249, 0.55) 100%
+  );
+}
+
+.panelAmbient[data-variant="timeout"][data-theme="light"] .panelAmbientGlow {
+  background: radial-gradient(
+    ellipse 85% 75% at 50% 42%,
+    rgba(226, 232, 240, 0.8) 0%,
+    rgba(148, 163, 184, 0.25) 50%,
+    transparent 74%
+  );
+}
+
+.root[data-variant="timeout"] {
+  --interior-tint: rgba(71, 85, 105, 0.07);
+}
+
+.root[data-variant="timeout"].root--light {
+  --interior-tint: rgba(203, 213, 225, 0.14);
+}
+
+/* Thin mouth-closure ring — window closed */
+.mouthCloseRing {
+  position: absolute;
+  left: 50%;
+  top: 8.2%;
+  width: 21%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 1.5px solid rgba(203, 213, 225, 0.55);
+  box-shadow:
+    0 0 10px rgba(148, 163, 184, 0.35),
+    inset 0 0 6px rgba(226, 232, 240, 0.2);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 5;
+  /* Centering via GSAP xPercent/yPercent so scale anims don't break it */
+}
+
+.root--light .mouthCloseRing {
+  border-color: rgba(100, 116, 139, 0.45);
+  box-shadow:
+    0 0 10px rgba(148, 163, 184, 0.28),
+    inset 0 0 5px rgba(148, 163, 184, 0.12);
+}
+
 .scene {
   position: relative;
   z-index: 1;

@@ -87,7 +87,29 @@ export const DECLINE_TIMING = {
   holdUntil: 2.85,
 } as const
 
-export type JarAnimationVariant = "success" | "decline"
+export type JarAnimationVariant = "success" | "decline" | "timeout"
+
+/**
+ * Timeout = same jar system, slowdown → near-miss → mouth closure.
+ * Knobs: closeAt, freezeProgress, driftDuration, coolPeak.
+ */
+export const TIMEOUT_TIMING = {
+  /** Early coins start losing momentum */
+  slowdownAt: 0.72,
+  /** Mouth closes / last coin freezes near lip */
+  closeAt: 2.48,
+  /** Path progress at freeze — almost in, never inside */
+  freezeProgress: 0.74,
+  /** Soft post-close drift (not a reject bounce) */
+  driftDuration: 0.58,
+  driftLift: 0.14,
+  ringIn: 0.22,
+  ringOut: 0.48,
+  ringPeakScale: 1.08,
+  coolPeak: 0.42,
+  coolSettle: 0.2,
+  holdUntil: 3.1,
+} as const
 
 export type SeatPosition = {
   x: number
@@ -248,7 +270,7 @@ function buildDenseFlyingSequence(): FlyingCoinSpec[] {
         ...seat,
         revealAt: Math.min(1, 0.03 + progressHint * 0.97),
       },
-      sound: isHero || isClosing || i % 3 === 0,
+      sound: isHero || isFinal || (!isClosing && i % 5 === 0),
       hero: isHero,
       final: isFinal,
     })
@@ -337,6 +359,48 @@ export const DECLINE_FLYING_SEQUENCE: FlyingCoinSpec[] = [
   },
 ]
 
+/**
+ * Timeout — familiar openers, then decelerate; last coin almost reaches the lip.
+ */
+export const TIMEOUT_FLYING_SEQUENCE: FlyingCoinSpec[] = [
+  {
+    ...FLYING_SEQUENCE_FULL[0],
+    id: 0,
+    delay: 0.14,
+    duration: 0.7,
+    mouthOffset: -0.1,
+    edge: "topLeft",
+    hero: true,
+    final: false,
+    sound: true,
+    seat: { x: 0.5, y: MOUTH_ZONE.enterYRatio + 0.04, rotation: -6, scale: 1.02, revealAt: 1 },
+  },
+  {
+    ...FLYING_SEQUENCE_FULL[2],
+    id: 1,
+    delay: 0.3,
+    duration: 0.75,
+    mouthOffset: 0.12,
+    edge: "topRight",
+    hero: false,
+    final: false,
+    sound: false,
+    seat: { x: 0.5, y: MOUTH_ZONE.enterYRatio + 0.04, rotation: 8, scale: 0.96, revealAt: 1 },
+  },
+  {
+    ...FLYING_SEQUENCE_FULL[1],
+    id: 2,
+    delay: 0.42,
+    duration: 1.85,
+    mouthOffset: 0.02,
+    edge: "top",
+    hero: false,
+    final: true,
+    sound: true,
+    seat: { x: 0.5, y: MOUTH_ZONE.enterYRatio + 0.03, rotation: -2, scale: 1.0, revealAt: 1 },
+  },
+]
+
 const FLY_TOTAL = FLYING_SEQUENCE.length
 
 /**
@@ -374,8 +438,14 @@ export function progressFromLandedCount(landed: number, totalFlying: number) {
   return Math.min(1, progress)
 }
 
+/** Soft-fill never pops coins above this Y (smaller Y = higher in jar) without a landing match */
+export const TOP_SURFACE_Y = 0.44
+
+/** Last N flying coins claim the crown / top mound — they must not dive into the body */
+export const CROWN_LANDING_COUNT = 12
+
 /** Soft-fill never pops coins above this Y without a landing match */
-export const SOFT_REVEAL_MAX_Y = 0.55
+export const SOFT_REVEAL_MAX_Y = TOP_SURFACE_Y
 
 /** Soft ambient settle opacity for fill progress 0…1 */
 export function ambientOpacityForProgress(progress: number) {
@@ -400,6 +470,8 @@ export type RestingCoinSpec = {
   revealAt: number
   depth: number
   shade: number
+  /** True for the visible crown / top mound */
+  surface?: boolean
 }
 
 function seeded(seed: number, ch: number) {
@@ -510,6 +582,7 @@ function buildRestingPile(): RestingCoinSpec[] {
         revealAt: lvl.revealAt + i * 0.003,
         depth: lvl.topLayer ? Math.min(1, depth + 0.04) : depth,
         shade,
+        surface: cy <= TOP_SURFACE_Y || Boolean(lvl.topLayer),
       })
       id += 1
     }
@@ -534,6 +607,19 @@ export const RESTING_PILE = withLandingRevealOrder(buildRestingPile())
 export const FILL_ORDER: RestingCoinSpec[] = [...RESTING_PILE].sort(
   (a, b) => b.y - a.y || a.x - b.x || a.id - b.id,
 )
+
+/** Body of the pile — soft-reveal + early landings. Crown seats reserved for finale. */
+export const BODY_ORDER: RestingCoinSpec[] = FILL_ORDER.filter(
+  (c) => !c.surface && c.y > TOP_SURFACE_Y,
+)
+
+/**
+ * Crown / top mound — filled only by the last flying coins.
+ * Ordered lower-crown → peak so the finale builds the visible hilltop.
+ */
+export const CROWN_ORDER: RestingCoinSpec[] = FILL_ORDER.filter(
+  (c) => c.surface || c.y <= TOP_SURFACE_Y,
+).sort((a, b) => b.y - a.y || a.x - b.x || a.id - b.id)
 
 export const COIN_SIZE = 64
 
@@ -695,11 +781,21 @@ export function flightEase(t: number): number {
   return 0.7 + 0.3 * (1 - Math.pow(1 - u, 2.4))
 }
 
-export function findRestingMatch(seat: SeatPosition, used: Set<number>) {
-  // Prefer bottom-up fill order so landings build the pile from the floor
-  for (const coin of FILL_ORDER) {
+export function findRestingMatch(
+  seat: SeatPosition,
+  used: Set<number>,
+  preferCrown = false,
+) {
+  const primary = preferCrown ? CROWN_ORDER : BODY_ORDER
+  const secondary = preferCrown ? BODY_ORDER : CROWN_ORDER
+
+  for (const coin of primary) {
     if (!used.has(coin.id)) return coin
   }
+  for (const coin of secondary) {
+    if (!used.has(coin.id)) return coin
+  }
+
   let best: RestingCoinSpec | null = null
   let bestDist = Infinity
   for (const coin of RESTING_PILE) {
@@ -715,13 +811,17 @@ export function findRestingMatch(seat: SeatPosition, used: Set<number>) {
   return best
 }
 
-const COIN_SFX_SRC = "/coin-impact.mp3"
-const SFX_POOL_SIZE = 12
+const COIN_SFX_SRC = "/coin-impact.mp3?v=3"
+const SFX_POOL_SIZE = 8
+/** Match rebuilt stereo clip (~0.42s) — keep metallic ring of the source sample */
+const IMPACT_TAIL_MS = 400
+const MIN_SFX_GAP_MS = 85
 let sfxPool: HTMLAudioElement[] | null = null
 let sfxPoolSrc: string | null = null
 let sfxUnlocked = false
 let sfxBuffer: AudioBuffer | null = null
 let audioCtx: AudioContext | null = null
+let lastSfxAt = -Infinity
 
 function ensureSfxPool() {
   if (typeof Audio === "undefined") return null
@@ -732,7 +832,7 @@ function ensureSfxPool() {
     const a = new Audio(COIN_SFX_SRC)
     a.preload = "auto"
     a.setAttribute("playsinline", "true")
-    a.volume = 0.85
+    a.volume = 0.72
     try {
       a.load()
     } catch {
@@ -809,12 +909,12 @@ export function unlockCoinSounds(): boolean {
               // ignore
             }
             a.muted = false
-            a.volume = 0.85
+            a.volume = 0.72
             sfxUnlocked = true
           })
           .catch(() => {
             a.muted = false
-            a.volume = 0.85
+            a.volume = 0.72
           })
       } else {
         a.pause()
@@ -824,13 +924,13 @@ export function unlockCoinSounds(): boolean {
           // ignore
         }
         a.muted = false
-        a.volume = 0.85
+        a.volume = 0.72
         htmlOk = true
       }
       htmlOk = true
     } catch {
       a.muted = false
-      a.volume = 0.85
+      a.volume = 0.72
     }
   }
 
@@ -843,8 +943,6 @@ export function primeCoinSounds() {
   prefetchAudioBuffer()
 }
 
-/** Play the prepared impact clip; soft stop after natural fade */
-const IMPACT_TAIL_MS = 600
 let coinSfxArmed = true
 let sfxCursor = 0
 const htmlClipTimers = new Map<HTMLAudioElement, number>()
@@ -859,7 +957,41 @@ function silenceHtml(a: HTMLAudioElement) {
   }
 }
 
-function playViaHtmlAudio(vol: number) {
+function rateForIndex(index: number) {
+  // Subtle pitch variety — keep close to source timbre
+  const steps = [0.98, 1.0, 1.03, 0.97, 1.01]
+  return steps[index % steps.length]
+}
+
+function playViaWebAudio(vol: number, rate: number) {
+  if (!coinSfxArmed) return false
+  if (!sfxBuffer || !audioCtx || audioCtx.state !== "running") return false
+  try {
+    const src = audioCtx.createBufferSource()
+    const gain = audioCtx.createGain()
+    src.buffer = sfxBuffer
+    src.playbackRate.value = rate
+    const t0 = audioCtx.currentTime
+    const dur = Math.min(IMPACT_TAIL_MS / 1000, sfxBuffer.duration / rate)
+    gain.gain.setValueAtTime(Math.max(0.001, vol), t0)
+    gain.gain.setValueAtTime(vol, t0 + Math.max(0.04, dur - 0.05))
+    gain.gain.linearRampToValueAtTime(0.001, t0 + dur)
+    src.connect(gain)
+    gain.connect(audioCtx.destination)
+    src.start(0)
+    src.stop(t0 + dur + 0.02)
+    activeBufferSources.push(src)
+    src.onended = () => {
+      const i = activeBufferSources.indexOf(src)
+      if (i >= 0) activeBufferSources.splice(i, 1)
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+function playViaHtmlAudio(vol: number, rate: number) {
   if (!coinSfxArmed) return false
   const pool = ensureSfxPool()
   if (!pool?.length) return false
@@ -869,7 +1001,8 @@ function playViaHtmlAudio(vol: number) {
     const prev = htmlClipTimers.get(a)
     if (prev != null) window.clearTimeout(prev)
     a.muted = false
-    a.volume = Math.min(1, Math.max(0.05, vol))
+    a.volume = Math.min(1, Math.max(0.04, vol))
+    a.playbackRate = rate
     try {
       if (a.readyState >= 2) a.currentTime = 0
     } catch {
@@ -892,45 +1025,29 @@ function playViaHtmlAudio(vol: number) {
   }
 }
 
-function playViaWebAudio(vol: number) {
-  if (!coinSfxArmed) return false
-  if (!sfxBuffer || !audioCtx || audioCtx.state !== "running") return false
-  try {
-    const src = audioCtx.createBufferSource()
-    const gain = audioCtx.createGain()
-    src.buffer = sfxBuffer
-    const t0 = audioCtx.currentTime
-    const dur = Math.min(IMPACT_TAIL_MS / 1000, sfxBuffer.duration)
-    gain.gain.setValueAtTime(Math.max(0.001, vol), t0)
-    // Gentle end fade — clip already fades; avoid harsh exponential cut
-    gain.gain.setValueAtTime(vol, t0 + Math.max(0.05, dur - 0.12))
-    gain.gain.linearRampToValueAtTime(0.001, t0 + dur)
-    src.connect(gain)
-    gain.connect(audioCtx.destination)
-    src.start(0)
-    src.stop(t0 + dur + 0.02)
-    activeBufferSources.push(src)
-    src.onended = () => {
-      const i = activeBufferSources.indexOf(src)
-      if (i >= 0) activeBufferSources.splice(i, 1)
-    }
-    return true
-  } catch {
-    return false
-  }
-}
-
-/** Impact using the user-provided coin sample (trimmed impact body) */
-export function playCoinSound(index: number, _spec?: FlyingCoinSpec) {
+/**
+ * Short metallic clink on landings.
+ * Respects `spec.sound === false`, throttles overlaps, prefers WebAudio.
+ */
+export function playCoinSound(index: number, spec?: FlyingCoinSpec) {
   if (!coinSfxArmed) return
-  const vol = 0.78 + (index % 5) * 0.03
-  if (playViaHtmlAudio(vol)) return
-  if (playViaWebAudio(vol)) return
+  if (spec?.sound === false) return
+
+  const now = typeof performance !== "undefined" ? performance.now() : Date.now()
+  if (now - lastSfxAt < MIN_SFX_GAP_MS) return
+  lastSfxAt = now
+
+  const vol = 0.58 + (index % 4) * 0.04
+  const rate = rateForIndex(index)
+  // Prefer WebAudio (clean one-shots); HTML pool is unlock/fallback only
+  if (playViaWebAudio(vol, rate)) return
+  if (playViaHtmlAudio(vol, rate)) return
 }
 
 /** Arm impacts again (e.g. animation restart) */
 export function armCoinSounds() {
   coinSfxArmed = true
+  lastSfxAt = -Infinity
 }
 
 /** Hard-stop every coin clink — call when the shower ends */
