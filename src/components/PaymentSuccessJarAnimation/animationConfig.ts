@@ -46,13 +46,13 @@ const INTERIOR_SPAN = JAR_FLOOR_Y - MOUTH_ZONE.enterYRatio
 export const TIMING = {
   jarEnter: 0.12,
   /** Short metallic settle — no cartoon bounce */
-  impactSettleMs: 120,
-  pileMicroSettleMs: 140,
-  landingSwapMs: 28,
-  jarPulseAt: 1.35,
+  impactSettleMs: 110,
+  pileMicroSettleMs: 120,
+  landingSwapMs: 26,
+  jarPulseAt: 1.15,
   /** Ambient residual after fill-synced pulses */
-  finalAmbientSettle: 0.32,
-  holdFinalUntil: 5.0,
+  finalAmbientSettle: 0.34,
+  holdFinalUntil: 4.85,
 } as const
 
 export type SeatPosition = {
@@ -78,7 +78,7 @@ export type FlyingCoinSpec = {
   duration: number
   startRotation: number
   endRotation: number
-  /** Total Z spin degrees over flight (~270–540 = 0.75–1.5 turns) */
+  /** Total Z spin degrees over flight (calm heavy tumble) */
   spinZ: number
   scale: number
   seat: SeatPosition
@@ -90,375 +90,107 @@ export type FlyingCoinSpec = {
 export type Pt = { x: number; y: number }
 
 /**
- * Landing seats — revealAt keyed to burst groups so pile grows with arrivals.
- * Top seats sit ~84–87% of useful interior height (air under mouth).
+ * Landing seats — positions unchanged (final pile look).
+ * revealAt is a soft hint; live fill is driven by landing count.
  */
 export const SEAT_POSITIONS: SeatPosition[] = [
-  { x: 0.5, y: JAR_FLOOR_Y, rotation: -10, scale: 1.02, revealAt: 0.08 },
-  { x: 0.28, y: 0.842, rotation: 22, scale: 1.0, revealAt: 0.12 },
-  { x: 0.72, y: 0.84, rotation: -20, scale: 1.0, revealAt: 0.14 },
-  { x: 0.42, y: 0.848, rotation: 12, scale: 1.01, revealAt: 0.18 },
-  { x: 0.58, y: 0.846, rotation: -14, scale: 1.01, revealAt: 0.2 },
-  { x: 0.22, y: 0.798, rotation: 28, scale: 0.98, revealAt: 0.28 },
-  { x: 0.78, y: 0.794, rotation: -26, scale: 0.98, revealAt: 0.32 },
-  { x: 0.48, y: 0.79, rotation: 14, scale: 1.0, revealAt: 0.36 },
-  { x: 0.62, y: 0.786, rotation: -16, scale: 1.0, revealAt: 0.42 },
-  { x: 0.36, y: 0.742, rotation: 10, scale: 1.0, revealAt: 0.48 },
-  { x: 0.68, y: 0.738, rotation: -12, scale: 0.99, revealAt: 0.52 },
-  { x: 0.52, y: 0.734, rotation: 8, scale: 1.01, revealAt: 0.56 },
-  { x: 0.3, y: 0.688, rotation: -14, scale: 0.98, revealAt: 0.64 },
-  { x: 0.7, y: 0.684, rotation: 12, scale: 0.98, revealAt: 0.68 },
-  { x: 0.5, y: 0.68, rotation: -8, scale: 1.0, revealAt: 0.72 },
-  { x: 0.4, y: 0.628, rotation: 10, scale: 0.99, revealAt: 0.8 },
-  { x: 0.6, y: 0.624, rotation: -10, scale: 0.99, revealAt: 0.86 },
-  { x: 0.5, y: 0.575, rotation: 6, scale: 1.0, revealAt: 0.9 },
-  { x: 0.42, y: 0.52, rotation: -8, scale: 0.98, revealAt: 0.94 },
-  { x: 0.58, y: 0.516, rotation: 8, scale: 0.98, revealAt: 0.97 },
+  { x: 0.5, y: JAR_FLOOR_Y, rotation: -10, scale: 1.02, revealAt: 0.06 },
+  { x: 0.28, y: 0.842, rotation: 22, scale: 1.0, revealAt: 0.09 },
+  { x: 0.72, y: 0.84, rotation: -20, scale: 1.0, revealAt: 0.11 },
+  { x: 0.42, y: 0.848, rotation: 12, scale: 1.01, revealAt: 0.14 },
+  { x: 0.58, y: 0.846, rotation: -14, scale: 1.01, revealAt: 0.16 },
+  { x: 0.22, y: 0.798, rotation: 28, scale: 0.98, revealAt: 0.22 },
+  { x: 0.78, y: 0.794, rotation: -26, scale: 0.98, revealAt: 0.25 },
+  { x: 0.48, y: 0.79, rotation: 14, scale: 1.0, revealAt: 0.28 },
+  { x: 0.62, y: 0.786, rotation: -16, scale: 1.0, revealAt: 0.32 },
+  { x: 0.36, y: 0.742, rotation: 10, scale: 1.0, revealAt: 0.36 },
+  { x: 0.68, y: 0.738, rotation: -12, scale: 0.99, revealAt: 0.4 },
+  { x: 0.52, y: 0.734, rotation: 8, scale: 1.01, revealAt: 0.44 },
+  { x: 0.3, y: 0.688, rotation: -14, scale: 0.98, revealAt: 0.5 },
+  { x: 0.7, y: 0.684, rotation: 12, scale: 0.98, revealAt: 0.54 },
+  { x: 0.5, y: 0.68, rotation: -8, scale: 1.0, revealAt: 0.58 },
+  { x: 0.4, y: 0.628, rotation: 10, scale: 0.99, revealAt: 0.64 },
+  { x: 0.6, y: 0.624, rotation: -10, scale: 0.99, revealAt: 0.7 },
+  { x: 0.5, y: 0.575, rotation: 6, scale: 1.0, revealAt: 0.76 },
+  { x: 0.42, y: 0.52, rotation: -8, scale: 0.98, revealAt: 0.84 },
+  { x: 0.58, y: 0.516, rotation: 8, scale: 0.98, revealAt: 0.92 },
   { x: 0.5, y: 0.46, rotation: 4, scale: 1.02, revealAt: 1.0 },
 ]
 
-/**
- * Compact sequence → full jar ~4.2s, ambient pulse 4.5, calm by 5.0.
- * Scales 0.78–1.0 (hero ≤ 1.06). Deterministic, no Math.random.
- * spinZ ≈ 100–200° (heavy metal tumble, not propeller).
- */
-export const FLYING_SEQUENCE_FULL: FlyingCoinSpec[] = [
-  // 0.20 — hero appears / flies from top-left
-  {
-    id: 0,
-    asset: 0,
-    edge: "topLeft",
-    spawnT: 0.35,
-    arc: 0.38,
-    mouthOffset: -0.1,
-    delay: 0.2,
-    duration: 0.72,
-    startRotation: 14,
-    endRotation: -10,
-    spinZ: 74,
-    scale: 1.06,
-    seat: SEAT_POSITIONS[0],
-    sound: true,
-    hero: true,
-  },
-  // 0.70 — main flow burst 1
-  {
-    id: 1,
-    asset: 2,
-    edge: "topRight",
-    spawnT: 0.4,
-    arc: -0.32,
-    mouthOffset: 0.1,
-    delay: 0.7,
-    duration: 0.68,
-    startRotation: -16,
-    endRotation: 18,
-    spinZ: -83,
-    scale: 0.88,
-    seat: SEAT_POSITIONS[1],
-  },
-  {
-    id: 2,
-    asset: 4,
-    edge: "left",
-    spawnT: 0.28,
-    arc: 0.42,
-    mouthOffset: -0.12,
-    delay: 0.78,
-    duration: 0.7,
-    startRotation: 18,
-    endRotation: -16,
-    spinZ: 88,
-    scale: 0.86,
-    seat: SEAT_POSITIONS[2],
-    sound: true,
-  },
-  {
-    id: 3,
-    asset: 1,
-    edge: "top",
-    spawnT: 0.55,
-    arc: 0.18,
-    mouthOffset: 0.06,
-    delay: 0.86,
-    duration: 0.66,
-    startRotation: -8,
-    endRotation: 12,
-    spinZ: 70,
-    scale: 0.92,
-    seat: SEAT_POSITIONS[3],
-  },
-  {
-    id: 4,
-    asset: 3,
-    edge: "right",
-    spawnT: 0.32,
-    arc: 0.36,
-    mouthOffset: 0.1,
-    delay: 0.94,
-    duration: 0.68,
-    startRotation: 12,
-    endRotation: -14,
-    spinZ: -79,
-    scale: 0.84,
-    seat: SEAT_POSITIONS[4],
-  },
-  // ~1.15 — burst 2
-  {
-    id: 5,
-    asset: 5,
-    edge: "topLeft",
-    spawnT: 0.48,
-    arc: 0.28,
-    mouthOffset: -0.08,
-    delay: 1.15,
-    duration: 0.64,
-    startRotation: -12,
-    endRotation: 16,
-    spinZ: 81,
-    scale: 0.9,
-    seat: SEAT_POSITIONS[5],
-    sound: true,
-  },
-  {
-    id: 6,
-    asset: 0,
-    edge: "topRight",
-    spawnT: 0.42,
-    arc: -0.22,
-    mouthOffset: 0.12,
-    delay: 1.22,
-    duration: 0.62,
-    startRotation: 10,
-    endRotation: -12,
-    spinZ: -70,
-    scale: 0.87,
-    seat: SEAT_POSITIONS[6],
-  },
-  {
-    id: 7,
-    asset: 2,
-    edge: "left",
-    spawnT: 0.5,
-    arc: 0.32,
-    mouthOffset: -0.08,
-    delay: 1.3,
-    duration: 0.66,
-    startRotation: -18,
-    endRotation: 10,
-    spinZ: 92,
-    scale: 0.82,
-    seat: SEAT_POSITIONS[7],
-  },
-  // denser mid-flow → ~75% by 2.80
-  {
-    id: 8,
-    asset: 4,
-    edge: "top",
-    spawnT: 0.46,
-    arc: -0.12,
-    mouthOffset: 0.04,
-    delay: 1.48,
-    duration: 0.6,
-    startRotation: 6,
-    endRotation: -16,
-    spinZ: 70,
-    scale: 0.94,
-    seat: SEAT_POSITIONS[8],
-  },
-  {
-    id: 9,
-    asset: 1,
-    edge: "right",
-    spawnT: 0.48,
-    arc: 0.28,
-    mouthOffset: 0.12,
-    delay: 1.58,
-    duration: 0.62,
-    startRotation: -10,
-    endRotation: 14,
-    spinZ: -85,
-    scale: 0.85,
-    seat: SEAT_POSITIONS[9],
-    sound: true,
-  },
-  {
-    id: 10,
-    asset: 3,
-    edge: "topLeft",
-    spawnT: 0.58,
-    arc: 0.22,
-    mouthOffset: -0.1,
-    delay: 1.7,
-    duration: 0.6,
-    startRotation: 14,
-    endRotation: -10,
-    spinZ: 72,
-    scale: 0.89,
-    seat: SEAT_POSITIONS[10],
-  },
-  {
-    id: 11,
-    asset: 5,
-    edge: "top",
-    spawnT: 0.6,
-    arc: 0.14,
-    mouthOffset: 0.08,
-    delay: 1.82,
-    duration: 0.58,
-    startRotation: -6,
-    endRotation: 12,
-    spinZ: -70,
-    scale: 0.91,
-    seat: SEAT_POSITIONS[11],
-  },
-  {
-    id: 12,
-    asset: 0,
-    edge: "left",
-    spawnT: 0.36,
-    arc: 0.45,
-    mouthOffset: -0.1,
-    delay: 1.96,
-    duration: 0.62,
-    startRotation: 8,
-    endRotation: -12,
-    spinZ: 83,
-    scale: 0.83,
-    seat: SEAT_POSITIONS[12],
-    sound: true,
-  },
-  {
-    id: 13,
-    asset: 2,
-    edge: "topRight",
-    spawnT: 0.52,
-    arc: -0.26,
-    mouthOffset: 0.08,
-    delay: 2.1,
-    duration: 0.58,
-    startRotation: -14,
-    endRotation: 10,
-    spinZ: -74,
-    scale: 0.88,
-    seat: SEAT_POSITIONS[13],
-  },
-  {
-    id: 14,
-    asset: 4,
-    edge: "top",
-    spawnT: 0.38,
-    arc: 0.2,
-    mouthOffset: -0.05,
-    delay: 2.24,
-    duration: 0.56,
-    startRotation: 12,
-    endRotation: -8,
-    spinZ: 70,
-    scale: 0.93,
-    seat: SEAT_POSITIONS[14],
-  },
-  {
-    id: 15,
-    asset: 1,
-    edge: "right",
-    spawnT: 0.26,
-    arc: 0.32,
-    mouthOffset: 0.1,
-    delay: 2.4,
-    duration: 0.58,
-    startRotation: -8,
-    endRotation: 14,
-    spinZ: -70,
-    scale: 0.86,
-    seat: SEAT_POSITIONS[15],
-  },
-  {
-    id: 16,
-    asset: 3,
-    edge: "topLeft",
-    spawnT: 0.4,
-    arc: 0.24,
-    mouthOffset: -0.12,
-    delay: 2.56,
-    duration: 0.56,
-    startRotation: 10,
-    endRotation: -10,
-    spinZ: 70,
-    scale: 0.9,
-    seat: SEAT_POSITIONS[16],
-    sound: true,
-  },
-  // main shower winds down ~3.30
-  {
-    id: 17,
-    asset: 5,
-    edge: "top",
-    spawnT: 0.5,
-    arc: -0.1,
-    mouthOffset: 0.03,
-    delay: 2.78,
-    duration: 0.52,
-    startRotation: -4,
-    endRotation: 8,
-    spinZ: 70,
-    scale: 0.92,
-    seat: SEAT_POSITIONS[17],
-  },
-  // Final three — calm, readable (no side edges)
-  // Path end + impact ≈ 4.15; settle; ambient pulse ~4.50
-  {
-    id: 18,
-    asset: 0,
-    edge: "topLeft",
-    spawnT: 0.36,
-    arc: 0.22,
-    mouthOffset: -0.12,
-    delay: 3.45,
-    duration: 0.52,
-    startRotation: 6,
-    endRotation: -6,
-    spinZ: 70,
-    scale: 0.95,
-    seat: SEAT_POSITIONS[18],
-    sound: true,
-    final: true,
-  },
-  {
-    id: 19,
-    asset: 2,
-    edge: "topRight",
-    spawnT: 0.4,
-    arc: -0.22,
-    mouthOffset: 0.12,
-    delay: 3.58,
-    duration: 0.48,
-    startRotation: -8,
-    endRotation: 10,
-    spinZ: -70,
-    scale: 0.94,
-    seat: SEAT_POSITIONS[19],
-    sound: true,
-    final: true,
-  },
-  {
-    id: 20,
-    asset: 4,
-    edge: "top",
-    spawnT: 0.5,
-    arc: 0.02,
-    mouthOffset: 0,
-    delay: 3.68,
-    duration: 0.36,
-    startRotation: 2,
-    endRotation: 4,
-    spinZ: 70,
-    scale: 1.0,
-    seat: SEAT_POSITIONS[20],
-    sound: true,
-    final: true,
-  },
+const EDGES: SpawnEdge[] = [
+  "topLeft",
+  "topRight",
+  "top",
+  "left",
+  "right",
+  "topLeft",
+  "top",
+  "topRight",
 ]
+
+/** Deterministic dense local shower — ~1.8× prior count, ~25% tighter cadence */
+function buildDenseFlyingSequence(): FlyingCoinSpec[] {
+  // Accent → build-up → active → wind-down → final cluster
+  const delays: number[] = [
+    0.18, // hero
+    0.4, 0.47, 0.54, 0.6, 0.66, 0.72, 0.78, 0.84, 0.9,
+    0.96, 1.02, 1.08, 1.14, 1.2, 1.26, 1.32, 1.38, 1.44, 1.5,
+    1.56, 1.62, 1.68, 1.74, 1.8, 1.86, 1.92, 1.98, 2.04, 2.1,
+    2.18, 2.26, 2.36, 2.48, 2.62,
+    // final fill — still denser, completes the jar
+    2.9, 3.0, 3.1, 3.2, 3.3,
+  ]
+
+  const coins: FlyingCoinSpec[] = []
+  for (let i = 0; i < delays.length; i += 1) {
+    const delay = delays[i]
+    const edge = EDGES[i % EDGES.length]
+    const seat = SEAT_POSITIONS[i % SEAT_POSITIONS.length]
+    const isHero = i === 0
+    const isFinal = i >= delays.length - 5
+    const progressHint = (i + 1) / delays.length
+
+    // Faster falls; finals a touch calmer/readable
+    let duration = isHero ? 0.58 : isFinal ? 0.42 : 0.5
+    if (!isHero && !isFinal) duration = 0.46 + (i % 5) * 0.02
+
+    const spinSign = i % 2 === 0 ? 1 : -1
+    const spinZ = spinSign * (70 + (i % 4) * 8)
+    const mouthOffset = ((i % 7) - 3) * 0.04
+    const arc = ((i % 5) - 2) * 0.08
+    const scale = isHero ? 1.05 : isFinal && i === delays.length - 1 ? 1.0 : 0.84 + (i % 6) * 0.02
+
+    coins.push({
+      id: i,
+      asset: i % 6,
+      edge: isFinal && i === delays.length - 1 ? "top" : edge,
+      spawnT: 0.28 + (i % 8) * 0.08,
+      arc,
+      mouthOffset,
+      delay,
+      duration,
+      startRotation: ((i % 5) - 2) * 4,
+      endRotation: ((i % 4) - 1.5) * 5,
+      spinZ,
+      scale,
+      seat: {
+        ...seat,
+        // Landing index drives fill; seat hint stays monotonic with sequence
+        revealAt: Math.min(1, 0.04 + progressHint * 0.96),
+      },
+      sound: isHero || isFinal || i % 4 === 0,
+      hero: isHero,
+      final: isFinal,
+    })
+  }
+  return coins
+}
+
+/**
+ * Dense controlled shower → full jar ~3.5s, final pulse ~3.9, calm by ~4.85.
+ * Deterministic, no Math.random.
+ */
+export const FLYING_SEQUENCE_FULL: FlyingCoinSpec[] = buildDenseFlyingSequence()
 
 export const DEBUG_FLY_MODE = false as false | "top" | "left" | "right" | "trio"
 
@@ -496,20 +228,24 @@ function pickFlyingSequence(): FlyingCoinSpec[] {
 export const FLYING_SEQUENCE: FlyingCoinSpec[] = pickFlyingSequence()
 
 /**
- * Pile volume groups synced to burst landings (every 2–4 coins → visible growth).
- * ~75% by 2.80, full by final land ~4.15.
+ * Soft timeline floor for fill — kept slightly BEHIND expected landings
+ * so the pile never jumps ahead of visible coins. Primary driver is landings.
  */
 export const PILE_FILL_KEYFRAMES: { time: number; progress: number }[] = [
-  { time: 0.95, progress: 0.14 },
-  { time: 1.35, progress: 0.3 },
-  { time: 1.75, progress: 0.46 },
-  { time: 2.15, progress: 0.6 },
-  { time: 2.55, progress: 0.72 },
-  { time: 2.8, progress: 0.78 },
-  { time: 3.15, progress: 0.88 },
-  { time: 3.55, progress: 0.94 },
-  { time: 4.15, progress: 1.0 },
+  { time: 0.85, progress: 0.08 },
+  { time: 1.15, progress: 0.18 },
+  { time: 1.45, progress: 0.3 },
+  { time: 1.75, progress: 0.42 },
+  { time: 2.05, progress: 0.55 },
+  { time: 2.35, progress: 0.66 },
+  { time: 2.65, progress: 0.76 },
+  { time: 2.95, progress: 0.85 },
+  { time: 3.2, progress: 0.92 },
+  { time: 3.55, progress: 1.0 },
 ]
+
+/** Progress thresholds that fire a green ambient pulse (synced to density) */
+export const AMBIENT_PULSE_AT: number[] = [0.12, 0.32, 0.52, 0.72, 0.9, 1.0]
 
 export type RestingCoinSpec = {
   id: number

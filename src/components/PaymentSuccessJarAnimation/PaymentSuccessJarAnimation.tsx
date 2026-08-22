@@ -10,6 +10,7 @@ import {
   MOUTH_ZONE,
   PILE_FILL_KEYFRAMES,
   PILE_SETTLE_AT,
+  AMBIENT_PULSE_AT,
   RESTING_PILE,
   TIMING,
   buildFlightPath,
@@ -270,11 +271,48 @@ export function PaymentSuccessJarAnimation({
     const matchedResting = new Set<number>()
     let pileProgress = 0
     let ambientFloor = 0
+    let landedCount = 0
+    const totalFlying = Math.max(1, FLYING_SEQUENCE.length)
+    const firedPulses = new Set<number>()
+
+    /** Cause → effect: each landing raises fill in small steps */
+    const progressFromLandings = (count: number) => {
+      const t = Math.min(1, count / totalFlying)
+      // Slight ease so first 3–4 coins already show a clear floor start
+      return Math.min(1, Math.pow(t, 0.92) * 1.02)
+    }
+
+    const maybePulseForProgress = (progress: number) => {
+      if (!ambient || !isLive()) return
+      for (const threshold of AMBIENT_PULSE_AT) {
+        if (firedPulses.has(threshold) || progress + 0.001 < threshold) continue
+        firedPulses.add(threshold)
+        const peak = ambientPeakForProgress(threshold)
+        const settle = 0.14 + threshold * 0.2
+        ambient.dataset.active = "true"
+        ambientFloor = Math.max(ambientFloor, settle)
+        gsap
+          .timeline({ overwrite: "auto" })
+          .to(ambient, {
+            opacity: peak,
+            scale: 1.04 + threshold * 0.05,
+            duration: 0.26,
+            ease: "sine.out",
+          })
+          .to(ambient, {
+            opacity: settle,
+            scale: 1,
+            duration: 0.36,
+            ease: "sine.inOut",
+          })
+      }
+    }
 
     const revealPileCoins = (progress: number, opts?: { skipIds?: Set<number> }) => {
       if (!isLive()) return
       pileProgress = Math.max(pileProgress, progress)
       root.dataset.empty = "false"
+      maybePulseForProgress(pileProgress)
       for (const coin of RESTING_PILE) {
         if (revealed.has(coin.id) || pileProgress < coin.revealAt) continue
         if (opts?.skipIds?.has(coin.id)) continue
@@ -292,7 +330,7 @@ export function PaymentSuccessJarAnimation({
         })
         gsap.to(el, {
           opacity: coin.depth,
-          duration: 0.1,
+          duration: 0.08,
           ease: "power2.out",
         })
       }
@@ -300,6 +338,8 @@ export function PaymentSuccessJarAnimation({
 
     const landSwap = (spec: FlyingCoinSpec, motion: MotionState, visuals: HTMLElement[]) => {
       if (!isLive()) return
+      landedCount += 1
+      const landProgress = progressFromLandings(landedCount)
       const match = findRestingMatch(spec.seat, matchedResting)
       const swapMs = TIMING.landingSwapMs / 1000
 
@@ -328,7 +368,10 @@ export function PaymentSuccessJarAnimation({
       }
 
       gsap.to(visuals, { opacity: 0, duration: swapMs, ease: "none" })
-      revealPileCoins(spec.seat.revealAt, { skipIds: match ? new Set([match.id]) : undefined })
+      // Landing is the source of truth for fill growth
+      revealPileCoins(Math.max(landProgress, spec.seat.revealAt * 0.35), {
+        skipIds: match ? new Set([match.id]) : undefined,
+      })
     }
 
     const spawnFlyingCoin = (spec: FlyingCoinSpec) => {
@@ -579,21 +622,16 @@ export function PaymentSuccessJarAnimation({
       }
 
       if (!DEBUG_FLY_MODE) {
-        // Fill progression + ambient pulses locked to fill (not every micro-step)
-        const pulseAtProgress = new Set([0.14, 0.46, 0.72, 0.88, 1.0])
+        // Soft floor only — stays behind landings so fill never jumps "from nowhere"
         for (const keyframe of PILE_FILL_KEYFRAMES) {
-          master.call(() => revealPileCoins(keyframe.progress), [], keyframe.time)
-          if (!pulseAtProgress.has(keyframe.progress)) continue
-          const peak = ambientPeakForProgress(keyframe.progress)
-          const settle = 0.14 + keyframe.progress * 0.18
-          pulseAmbient(master, keyframe.time, peak, settle, 0.68)
+          master.call(() => revealPileCoins(keyframe.progress * 0.72), [], keyframe.time)
         }
 
         master.to(
           jarStack,
           {
             scale: 1.008,
-            duration: 0.28,
+            duration: 0.26,
             ease: "sine.inOut",
             yoyo: true,
             repeat: 1,
@@ -619,14 +657,14 @@ export function PaymentSuccessJarAnimation({
           PILE_SETTLE_AT + microDur,
         )
 
-        // Strongest pulse on full fill, then calm residual
-        const finalAt = Math.max(PILE_SETTLE_AT + microDur + 0.12, 4.45)
-        pulseAmbient(master, finalAt, 0.78, TIMING.finalAmbientSettle, 0.9)
+        // Strongest pulse after the jar is visually full
+        const finalAt = PILE_SETTLE_AT + microDur + 0.18
+        pulseAmbient(master, finalAt, 0.82, TIMING.finalAmbientSettle, 0.85)
 
         master.to(
           {},
           {
-            duration: Math.max(0, TIMING.holdFinalUntil - finalAt - 0.9),
+            duration: Math.max(0, TIMING.holdFinalUntil - finalAt - 0.85),
           },
           finalAt,
         )
