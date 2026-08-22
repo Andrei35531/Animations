@@ -1,0 +1,51 @@
+.success-animation-root {
+  position: relative;
+  flex: 1 0 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 320px;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.success-orb-stage {
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  width: 280px;
+  height: 280px;
+  transform-origin: 50% 50%;
+}
+
+.success-checkmark {
+  display: block;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.35));
+}
+
+.success-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 0 16px 20px;
+  pointer-events: none;
+}
+
+.status-success {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+}
+
+.status-title,
+.status-subtitle {
+  position: relative;
+  z-index: 1;
+}
