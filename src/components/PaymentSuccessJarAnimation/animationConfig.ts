@@ -236,9 +236,10 @@ export const FILL_STAGE_THRESHOLDS: { landed: number; progress: number }[] = (
     [0.3, 0.42],
     [0.42, 0.52],
     [0.53, 0.62],
-    [0.67, 0.72],
-    [0.8, 0.82],
-    [0.94, 0.92],
+    [0.67, 0.74],
+    [0.8, 0.86],
+    // Reach full pile during the stream — not after the last coin has already fallen
+    [0.92, 1.0],
     [1.0, 1.0],
   ] as const
 ).map(([frac, progress]) => ({

@@ -657,8 +657,8 @@ export function PaymentSuccessJarAnimation({
 
       if (!DEBUG_FLY_MODE) {
         // Soft ambient only — no jar scale pulse / green breathing
+        // No post-shower force reveal: fill stops when landings stop
 
-        master.call(() => revealPileCoins(1, { forceAll: true }), [], PILE_SETTLE_AT)
         master.call(() => stopAllCoinSounds(), [], PILE_SETTLE_AT)
 
         const microDur = TIMING.pileMicroSettleMs / 1000
