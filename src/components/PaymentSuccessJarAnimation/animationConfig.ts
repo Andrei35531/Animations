@@ -598,20 +598,24 @@ export function findRestingMatch(seat: SeatPosition, used: Set<number>) {
   return best
 }
 
-const COIN_SFX_SRC = "/zvuk-zvona-monet.mp3"
+const COIN_SFX_SRC = "/coin-impact.mp3"
 const SFX_POOL_SIZE = 12
 let sfxPool: HTMLAudioElement[] | null = null
+let sfxPoolSrc: string | null = null
 let sfxUnlocked = false
 let sfxBuffer: AudioBuffer | null = null
 let audioCtx: AudioContext | null = null
 
 function ensureSfxPool() {
-  if (sfxPool || typeof Audio === "undefined") return sfxPool
+  if (typeof Audio === "undefined") return null
+  if (sfxPool && sfxPoolSrc === COIN_SFX_SRC) return sfxPool
+  sfxPoolSrc = COIN_SFX_SRC
+  sfxBuffer = null
   sfxPool = Array.from({ length: SFX_POOL_SIZE }, () => {
     const a = new Audio(COIN_SFX_SRC)
     a.preload = "auto"
     a.setAttribute("playsinline", "true")
-    a.volume = 0.72
+    a.volume = 0.85
     try {
       a.load()
     } catch {
@@ -722,8 +726,8 @@ export function primeCoinSounds() {
   prefetchAudioBuffer()
 }
 
-/** Keep each impact short so long mp3 tails don't outlive the shower */
-const IMPACT_TAIL_MS = 160
+/** Play the prepared impact clip; soft stop after natural fade */
+const IMPACT_TAIL_MS = 600
 let coinSfxArmed = true
 let sfxCursor = 0
 const htmlClipTimers = new Map<HTMLAudioElement, number>()
@@ -742,7 +746,6 @@ function playViaHtmlAudio(vol: number) {
   if (!coinSfxArmed) return false
   const pool = ensureSfxPool()
   if (!pool?.length) return false
-  // Must reuse gesture-unlocked pool elements — fresh Audio() stays silent
   const a = pool[sfxCursor % pool.length]
   sfxCursor += 1
   try {
@@ -766,7 +769,6 @@ function playViaHtmlAudio(vol: number) {
         silenceHtml(a)
       })
     }
-    // Treat as attempted — autoplay policy may still reject async
     return true
   } catch {
     return false
@@ -781,9 +783,11 @@ function playViaWebAudio(vol: number) {
     const gain = audioCtx.createGain()
     src.buffer = sfxBuffer
     const t0 = audioCtx.currentTime
-    const dur = IMPACT_TAIL_MS / 1000
+    const dur = Math.min(IMPACT_TAIL_MS / 1000, sfxBuffer.duration)
     gain.gain.setValueAtTime(Math.max(0.001, vol), t0)
-    gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur)
+    // Gentle end fade — clip already fades; avoid harsh exponential cut
+    gain.gain.setValueAtTime(vol, t0 + Math.max(0.05, dur - 0.12))
+    gain.gain.linearRampToValueAtTime(0.001, t0 + dur)
     src.connect(gain)
     gain.connect(audioCtx.destination)
     src.start(0)
@@ -799,11 +803,10 @@ function playViaWebAudio(vol: number) {
   }
 }
 
-/** Impact thud on every landing */
+/** Impact using the user-provided coin sample (trimmed impact body) */
 export function playCoinSound(index: number, _spec?: FlyingCoinSpec) {
   if (!coinSfxArmed) return
-  const vol = 0.82 + (index % 5) * 0.03
-  // Prefer HTML pool unlocked by user gesture — more reliable than Web Audio timing
+  const vol = 0.78 + (index % 5) * 0.03
   if (playViaHtmlAudio(vol)) return
   if (playViaWebAudio(vol)) return
 }
