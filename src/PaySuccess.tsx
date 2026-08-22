@@ -25,8 +25,8 @@ const OUTCOME_COPY: Record<
   success: {
     title: "Оплата прошла успешно",
     subtitle:
-      "Средства зачислены. Можете вернуться в магазин — заказ уже в обработке.",
-    cta: "Вернуться в магазин",
+      "Средства зачислены. Можете вернуться в\u00A0магазин — заказ уже в\u00A0обработке.",
+    cta: "Вернуться в\u00A0магазин",
   },
   declined: {
     title: "Оплата отклонена",
@@ -35,8 +35,8 @@ const OUTCOME_COPY: Record<
   },
   expired: {
     title: "Срок оплаты истёк",
-    subtitle: "Время на оплату заказа закончилось. Создайте платёж заново в магазине.",
-    cta: "Вернуться в магазин",
+    subtitle: "Время на оплату заказа закончилось. Создайте платёж заново в\u00A0магазине.",
+    cta: "Вернуться в\u00A0магазин",
   },
 }
 
@@ -264,7 +264,7 @@ export function PaySuccess() {
                         <p className="status-subtitle">{copy.subtitle}</p>
                       </div>
                       <button
-                        className="cta-btn cta-btn--declined"
+                        className="cta-btn"
                         type="button"
                         onClick={() => {
                           unlockCoinSounds()
@@ -288,7 +288,7 @@ export function PaySuccess() {
                         <p className="status-subtitle">{copy.subtitle}</p>
                       </div>
                       <button
-                        className="cta-btn cta-btn--expired"
+                        className="cta-btn"
                         type="button"
                         onClick={() => {
                           unlockCoinSounds()
