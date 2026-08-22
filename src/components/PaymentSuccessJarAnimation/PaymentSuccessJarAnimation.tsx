@@ -12,6 +12,7 @@ import {
   RESTING_PILE,
   TIMING,
   ambientOpacityForProgress,
+  ambientPulsePeakForProgress,
   buildFlightPath,
   findRestingMatch,
   FILL_ORDER,
@@ -307,20 +308,44 @@ export function PaymentSuccessJarAnimation({
     let landedCount = 0
     const totalFlying = Math.max(1, FLYING_SEQUENCE.length)
 
-    /** Smooth success illumination — monotonic fade-up only, never pulses */
-    let ambientTarget = 0
+    /**
+     * Full success-overlay green pulse — behind texts, CTA, and jar.
+     * Fires only when fill stage advances (not a continuous jar-local glow).
+     */
+    let ambientFloor = 0
+    let lastPulseProgress = -1
     const syncAmbientGlow = (progress: number) => {
       if (!ambient || !isLive()) return
-      const target = ambientOpacityForProgress(progress)
-      if (target <= ambientTarget + 0.005) return
-      ambientTarget = target
+      const settle = ambientOpacityForProgress(progress)
+      const peak = ambientPulsePeakForProgress(progress)
+      // One soft pulse per meaningful stage step
+      if (progress - lastPulseProgress < 0.04 && progress < 0.99) {
+        if (settle > ambientFloor) {
+          ambientFloor = settle
+          gsap.to(ambient, {
+            opacity: settle,
+            duration: 0.5,
+            ease: "sine.out",
+            overwrite: "auto",
+          })
+        }
+        return
+      }
+      lastPulseProgress = progress
       ambient.dataset.active = "true"
-      gsap.to(ambient, {
-        opacity: target,
-        duration: 0.85,
-        ease: "sine.out",
-        overwrite: "auto",
-      })
+      ambientFloor = Math.max(ambientFloor, settle)
+      gsap
+        .timeline({ overwrite: "auto" })
+        .to(ambient, {
+          opacity: peak,
+          duration: 0.34,
+          ease: "sine.out",
+        })
+        .to(ambient, {
+          opacity: settle,
+          duration: 0.55,
+          ease: "sine.inOut",
+        })
     }
 
     /**

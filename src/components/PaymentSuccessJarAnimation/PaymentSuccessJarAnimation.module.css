@@ -31,18 +31,16 @@
 }
 
 .root--dark {
-  --scene-shadow: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.42));
   --interior-tint: rgba(12, 28, 48, 0.06);
 }
 
 .root--light {
-  --scene-shadow: drop-shadow(0 10px 22px rgba(15, 23, 42, 0.14));
   --interior-tint: rgba(255, 255, 255, 0.04);
 }
 
 /*
- * Full-panel success ambient — mounted on .success-overlay (not jar-local).
- * Soft continuous green illumination (no pulse / breath).
+ * Full-panel success ambient on .success-overlay —
+ * gentle green wash/pulse behind texts, CTA, and jar (both themes).
  */
 .panelAmbient {
   position: absolute;
@@ -59,39 +57,39 @@
   inset: 0;
   background: linear-gradient(
     165deg,
-    rgba(52, 211, 153, 0.1) 0%,
-    rgba(16, 185, 129, 0.06) 48%,
-    rgba(6, 78, 59, 0.08) 100%
+    rgba(52, 211, 153, 0.22) 0%,
+    rgba(16, 185, 129, 0.14) 48%,
+    rgba(6, 95, 70, 0.18) 100%
   );
 }
 
 .panelAmbientGlow {
   position: absolute;
-  inset: -8%;
+  inset: -12%;
   background: radial-gradient(
-    ellipse 72% 58% at 50% 42%,
-    rgba(110, 231, 183, 0.2) 0%,
-    rgba(52, 211, 153, 0.07) 48%,
-    transparent 74%
+    ellipse 80% 70% at 50% 45%,
+    rgba(110, 231, 183, 0.38) 0%,
+    rgba(52, 211, 153, 0.14) 48%,
+    transparent 72%
   );
-  filter: blur(36px);
+  filter: blur(40px);
 }
 
 .panelAmbient[data-theme="light"] .panelAmbientTint {
   background: linear-gradient(
     165deg,
-    rgba(167, 243, 208, 0.42) 0%,
-    rgba(110, 231, 183, 0.2) 48%,
-    rgba(209, 250, 229, 0.28) 100%
+    rgba(167, 243, 208, 0.62) 0%,
+    rgba(110, 231, 183, 0.36) 45%,
+    rgba(209, 250, 229, 0.48) 100%
   );
 }
 
 .panelAmbient[data-theme="light"] .panelAmbientGlow {
   background: radial-gradient(
-    ellipse 75% 62% at 50% 42%,
-    rgba(167, 243, 208, 0.5) 0%,
-    rgba(52, 211, 153, 0.18) 50%,
-    transparent 76%
+    ellipse 85% 75% at 50% 42%,
+    rgba(167, 243, 208, 0.78) 0%,
+    rgba(52, 211, 153, 0.28) 50%,
+    transparent 74%
   );
 }
 
@@ -113,7 +111,7 @@
   aspect-ratio: 1;
   opacity: 1;
   visibility: visible;
-  filter: var(--scene-shadow);
+  /* No CSS drop-shadow — it painted a muddy oval under the pedestal */
 }
 
 .layer {

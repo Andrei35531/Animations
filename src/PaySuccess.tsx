@@ -4,7 +4,6 @@ import bannerSrc from "./assets/banner.png"
 import copySrc from "./assets/copy.svg"
 import glowSrc from "./assets/glow.svg"
 import { AnimatedThemeToggler } from "./components/AnimatedThemeToggler/AnimatedThemeToggler"
-import { LightRays } from "./components/LightRays/LightRays"
 import { primeCoinSounds, unlockCoinSounds } from "./components/PaymentSuccessJarAnimation/animationConfig"
 import { PaymentSuccessJarAnimation } from "./components/PaymentSuccessJarAnimation/PaymentSuccessJarAnimation"
 import { useViewportScale } from "./hooks/useViewportScale"
@@ -14,27 +13,6 @@ const ORDER_ID = "42f34227-df00-422c-bc30-1d16d8c05d5d"
 const THEME_STORAGE_KEY = "parity-pay-theme"
 
 export type PageTheme = "dark" | "light"
-
-const RAYS = {
-  dark: {
-    raysColor: "#ffc4a8",
-    raysSpeed: 0.5,
-    lightSpread: 0.28,
-    rayLength: 1.35,
-    fadeDistance: 1.1,
-    saturation: 0.85,
-    noiseAmount: 0.02,
-  },
-  light: {
-    raysColor: "#fff2e8",
-    raysSpeed: 0.55,
-    lightSpread: 0.35,
-    rayLength: 1.55,
-    fadeDistance: 1.2,
-    saturation: 1,
-    noiseAmount: 0.015,
-  },
-} as const
 
 function readStoredTheme(): PageTheme {
   try {
@@ -56,7 +34,6 @@ export function PaySuccess() {
   const [copied, setCopied] = useState(false)
   const [jarPlay, setJarPlay] = useState(false)
   const scale = useViewportScale()
-  const rays = RAYS[theme]
 
   useEffect(() => {
     applyDocumentTheme(theme)
@@ -117,21 +94,6 @@ export function PaySuccess() {
     <div className="page" data-theme={theme} data-node-id="1169:168">
       <div className="page-bg" aria-hidden>
         <div className="page-bg-base" />
-        <div className="light-rays-stage">
-          <LightRays
-            key={theme}
-            alwaysOn
-            raysOrigin="top-right"
-            raysColor={rays.raysColor}
-            raysSpeed={rays.raysSpeed}
-            lightSpread={rays.lightSpread}
-            rayLength={rays.rayLength}
-            fadeDistance={rays.fadeDistance}
-            saturation={rays.saturation}
-            followMouse={false}
-            noiseAmount={rays.noiseAmount}
-          />
-        </div>
         <div className="page-bg-overlay" />
       </div>
 

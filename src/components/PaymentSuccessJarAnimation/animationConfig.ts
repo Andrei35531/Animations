@@ -51,8 +51,8 @@ export const TIMING = {
   /** Hard cut after pose-matched handoff — no dual-frame ghost */
   landingSwapMs: 0,
   jarPulseAt: 1.15,
-  /** Calm final green ambient (no pulse peaks) */
-  finalAmbientSettle: 0.36,
+  /** Soft residual after fill-synced panel pulses */
+  finalAmbientSettle: 0.42,
   holdFinalUntil: 4.85,
 } as const
 
@@ -260,11 +260,16 @@ export function progressFromLandedCount(landed: number, totalFlying: number) {
 /** Soft-fill never pops coins above this Y without a landing match */
 export const SOFT_REVEAL_MAX_Y = 0.55
 
-/** Smooth ambient target opacity for fill progress 0…1 (no pulse peaks) */
+/** Soft ambient settle opacity for fill progress 0…1 */
 export function ambientOpacityForProgress(progress: number) {
   const t = Math.max(0, Math.min(1, progress))
   const eased = t * t * (3 - 2 * t)
-  return 0.04 + eased * (TIMING.finalAmbientSettle - 0.04)
+  return 0.1 + eased * (TIMING.finalAmbientSettle - 0.1)
+}
+
+/** Brief peak above settle for a gentle panel pulse on each fill stage */
+export function ambientPulsePeakForProgress(progress: number) {
+  return Math.min(0.92, ambientOpacityForProgress(progress) + 0.22)
 }
 
 export type RestingCoinSpec = {
