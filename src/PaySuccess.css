@@ -499,7 +499,7 @@
   line-height: normal;
   color: var(--title-color);
   text-align: center;
-  white-space: nowrap;
+  white-space: normal;
 }
 
 .status-subtitle {
@@ -534,6 +534,16 @@
 
 .cta-btn:hover {
   filter: brightness(1.05);
+}
+
+.cta-btn--declined {
+  background: #dc2626;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.28);
+}
+
+.cta-btn--expired {
+  background: #d97706;
+  box-shadow: 0 2px 8px rgba(217, 119, 6, 0.28);
 }
 
 .cta-btn:active {

@@ -4,6 +4,12 @@ import bannerSrc from "./assets/banner.png"
 import copySrc from "./assets/copy.svg"
 import glowSrc from "./assets/glow.svg"
 import { AnimatedThemeToggler } from "./components/AnimatedThemeToggler/AnimatedThemeToggler"
+import {
+  OutcomeDemoSwitcher,
+  type OutcomeDemoId,
+} from "./components/OutcomeDemoSwitcher/OutcomeDemoSwitcher"
+import { PaymentDeclinedDemo } from "./components/PaymentDeclinedDemo/PaymentDeclinedDemo"
+import { PaymentExpiredDemo } from "./components/PaymentExpiredDemo/PaymentExpiredDemo"
 import { primeCoinSounds, unlockCoinSounds } from "./components/PaymentSuccessJarAnimation/animationConfig"
 import { PaymentSuccessJarAnimation } from "./components/PaymentSuccessJarAnimation/PaymentSuccessJarAnimation"
 import { useViewportScale } from "./hooks/useViewportScale"
@@ -13,6 +19,28 @@ const ORDER_ID = "42f34227-df00-422c-bc30-1d16d8c05d5d"
 const THEME_STORAGE_KEY = "parity-pay-theme"
 
 export type PageTheme = "dark" | "light"
+
+const OUTCOME_COPY: Record<
+  OutcomeDemoId,
+  { title: string; subtitle: string; cta: string }
+> = {
+  success: {
+    title: "Оплата прошла успешно",
+    subtitle:
+      "Средства зачислены. Можете вернуться в магазин — заказ уже в обработке.",
+    cta: "Вернуться в магазин",
+  },
+  declined: {
+    title: "Оплата отклонена",
+    subtitle: "Банк отклонил платёж. Проверьте данные карты или выберите другой способ.",
+    cta: "Попробовать снова",
+  },
+  expired: {
+    title: "Срок оплаты истёк",
+    subtitle: "Время на оплату заказа закончилось. Создайте платёж заново в магазине.",
+    cta: "Вернуться в магазин",
+  },
+}
 
 function readStoredTheme(): PageTheme {
   try {
@@ -33,7 +61,9 @@ export function PaySuccess() {
   const [theme, setTheme] = useState<PageTheme>(() => readStoredTheme())
   const [copied, setCopied] = useState(false)
   const [jarPlay, setJarPlay] = useState(false)
+  const [outcome, setOutcome] = useState<OutcomeDemoId>("success")
   const scale = useViewportScale()
+  const copy = OUTCOME_COPY[outcome]
 
   useEffect(() => {
     applyDocumentTheme(theme)
@@ -44,7 +74,7 @@ export function PaySuccess() {
     }
   }, [theme])
 
-  // Unlock audio synchronously on first gesture, then start the jar
+  // Unlock audio synchronously on first gesture, then start the jar (success only)
   useEffect(() => {
     let started = false
     const startJar = () => {
@@ -62,7 +92,6 @@ export function PaySuccess() {
     window.addEventListener("touchstart", onGesture, { capture: true, passive: true })
     window.addEventListener("keydown", onGesture, { capture: true })
 
-    // Prefetch pool/buffer only — do not start muted without a gesture
     primeCoinSounds()
 
     return () => {
@@ -76,6 +105,15 @@ export function PaySuccess() {
     unlockCoinSounds()
     setJarPlay(true)
     setTheme(next)
+  }, [])
+
+  const handleOutcomeChange = useCallback((next: OutcomeDemoId) => {
+    setOutcome(next)
+    if (next === "success") {
+      // Remounted success panel starts fresh; arm play after gesture unlock
+      setJarPlay(true)
+      unlockCoinSounds()
+    }
   }, [])
 
   async function copyOrderId() {
@@ -183,37 +221,82 @@ export function PaySuccess() {
 
               <div className="col-payment" data-node-id="1169:209">
                 <div className="payment-surface" data-node-id="1169:210">
-                  <div className="success-overlay" data-node-id="1169:212">
-                    <PaymentSuccessJarAnimation theme={theme} play={jarPlay} />
-
-                    <div className="status-block">
-                      <h1 className="status-title" data-node-id="1169:221">
-                        Оплата прошла успешно
-                      </h1>
-                      <p className="status-subtitle" data-node-id="1169:222">
-                        {"Средства зачислены. Можете вернуться в магазин — заказ уже "}
-                        <br />
-                        в обработке.
-                      </p>
-                    </div>
-
-                    <button
-                      className="cta-btn"
-                      type="button"
-                      onClick={() => {
-                        unlockCoinSounds()
-                        setJarPlay(true)
-                      }}
+                  {/*
+                    Mount only the active outcome. Success jar unmounts on other tabs
+                    so declined/expired work never mutates PaymentSuccessJarAnimation.
+                  */}
+                  {outcome === "success" ? (
+                    <div
+                      key="outcome-success"
+                      className="success-overlay"
+                      data-outcome="success"
+                      data-node-id="1169:212"
                     >
-                      Вернуться в магазин
-                    </button>
-                  </div>
+                      <PaymentSuccessJarAnimation theme={theme} play={jarPlay} />
+
+                      <div className="status-block">
+                        <h1 className="status-title" data-node-id="1169:221">
+                          {copy.title}
+                        </h1>
+                        <p className="status-subtitle" data-node-id="1169:222">
+                          {copy.subtitle}
+                        </p>
+                      </div>
+
+                      <button
+                        className="cta-btn"
+                        type="button"
+                        onClick={() => {
+                          unlockCoinSounds()
+                          setJarPlay(true)
+                        }}
+                      >
+                        {copy.cta}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {outcome === "declined" ? (
+                    <div
+                      key="outcome-declined"
+                      className="success-overlay outcome-overlay--declined"
+                      data-outcome="declined"
+                    >
+                      <PaymentDeclinedDemo theme={theme} play />
+                      <div className="status-block">
+                        <h1 className="status-title">{copy.title}</h1>
+                        <p className="status-subtitle">{copy.subtitle}</p>
+                      </div>
+                      <button className="cta-btn cta-btn--declined" type="button">
+                        {copy.cta}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {outcome === "expired" ? (
+                    <div
+                      key="outcome-expired"
+                      className="success-overlay outcome-overlay--expired"
+                      data-outcome="expired"
+                    >
+                      <PaymentExpiredDemo theme={theme} play />
+                      <div className="status-block">
+                        <h1 className="status-title">{copy.title}</h1>
+                        <p className="status-subtitle">{copy.subtitle}</p>
+                      </div>
+                      <button className="cta-btn cta-btn--expired" type="button">
+                        {copy.cta}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      <OutcomeDemoSwitcher value={outcome} onChange={handleOutcomeChange} />
     </div>
   )
 }
