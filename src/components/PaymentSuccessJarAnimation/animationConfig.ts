@@ -553,20 +553,24 @@ export function findRestingMatch(seat: SeatPosition, used: Set<number>) {
 }
 
 const COIN_SFX_SRC = "/zvuk-zvona-monet.mp3"
-const SFX_POOL_SIZE = 10
+const SFX_POOL_SIZE = 12
 let sfxPool: HTMLAudioElement[] | null = null
-let sfxCursor = 0
 let sfxUnlocked = false
 let sfxBuffer: AudioBuffer | null = null
 let audioCtx: AudioContext | null = null
-let unlockInFlight: Promise<boolean> | null = null
 
 function ensureSfxPool() {
   if (sfxPool || typeof Audio === "undefined") return sfxPool
   sfxPool = Array.from({ length: SFX_POOL_SIZE }, () => {
     const a = new Audio(COIN_SFX_SRC)
     a.preload = "auto"
-    a.volume = 0.55
+    a.setAttribute("playsinline", "true")
+    a.volume = 0.72
+    try {
+      a.load()
+    } catch {
+      // ignore
+    }
     return a
   })
   return sfxPool
@@ -583,124 +587,195 @@ function getAudioCtx() {
   return audioCtx
 }
 
-async function ensureAudioBuffer() {
-  if (sfxBuffer) return sfxBuffer
+/** Fire-and-forget buffer decode — never await inside a user-gesture handler */
+function prefetchAudioBuffer() {
+  if (sfxBuffer) return
   const ctx = getAudioCtx()
-  if (!ctx) return null
-  try {
-    const res = await fetch(COIN_SFX_SRC)
-    if (!res.ok) return null
-    const raw = await res.arrayBuffer()
-    sfxBuffer = await ctx.decodeAudioData(raw.slice(0))
-    return sfxBuffer
-  } catch {
-    return null
-  }
+  if (!ctx) return
+  void fetch(COIN_SFX_SRC)
+    .then((res) => (res.ok ? res.arrayBuffer() : null))
+    .then((raw) => (raw ? ctx.decodeAudioData(raw.slice(0)) : null))
+    .then((buf) => {
+      if (buf) sfxBuffer = buf
+    })
+    .catch(() => {
+      // ignore
+    })
 }
 
 /**
- * Must run inside a user gesture. Creates/resumes AudioContext and primes HTMLAudio.
- * Returns true only when playback is actually allowed.
+ * MUST be called synchronously from a user gesture (pointerdown/keydown).
+ * Do not await before the muted play() — that drops the browser gesture token.
  */
-export async function unlockCoinSounds(): Promise<boolean> {
-  if (sfxUnlocked && audioCtx?.state === "running") return true
-  if (unlockInFlight) return unlockInFlight
+export function unlockCoinSounds(): boolean {
+  ensureSfxPool()
+  const ctx = getAudioCtx()
+  if (ctx && ctx.state !== "running") {
+    void ctx.resume()
+  }
+  prefetchAudioBuffer()
 
-  unlockInFlight = (async () => {
-    ensureSfxPool()
-    const ctx = getAudioCtx()
+  const pool = sfxPool
+  if (!pool?.length) return sfxUnlocked
+
+  let htmlOk = false
+  for (const a of pool) {
     try {
-      if (ctx && ctx.state === "suspended") {
-        await ctx.resume()
-      }
-      await ensureAudioBuffer()
-
-      const pool = sfxPool
-      let htmlOk = false
-      if (pool) {
-        for (const a of pool) {
-          a.muted = true
-          a.volume = 0.01
-          try {
-            await a.play()
+      a.muted = true
+      a.volume = 0
+      const p = a.play()
+      if (p && typeof p.then === "function") {
+        void p
+          .then(() => {
             a.pause()
             a.currentTime = 0
-            htmlOk = true
-          } catch {
-            // still locked
-          }
-          a.muted = false
-          a.volume = 0.55
-        }
+            a.muted = false
+            a.volume = 0.72
+          })
+          .catch(() => {
+            a.muted = false
+            a.volume = 0.72
+          })
+      } else {
+        a.pause()
+        a.currentTime = 0
+        a.muted = false
+        a.volume = 0.72
       }
-
-      const running = ctx?.state === "running"
-      sfxUnlocked = Boolean(running || htmlOk)
-      return sfxUnlocked
+      htmlOk = true
     } catch {
-      sfxUnlocked = false
-      return false
-    } finally {
-      unlockInFlight = null
+      a.muted = false
+      a.volume = 0.72
     }
-  })()
+  }
 
-  return unlockInFlight
+  sfxUnlocked = htmlOk || ctx?.state === "running" || sfxUnlocked
+  return sfxUnlocked
 }
 
 export function primeCoinSounds() {
   ensureSfxPool()
-  // Do NOT create AudioContext here — that poisons autoplay without a gesture
+  prefetchAudioBuffer()
 }
 
-function playViaHtmlAudio(vol: number) {
-  const pool = ensureSfxPool()
-  if (!pool?.length) return
-  const a = pool[sfxCursor % pool.length]
-  sfxCursor += 1
+/** Keep each impact short so long mp3 tails don't outlive the shower */
+const IMPACT_TAIL_MS = 110
+let coinSfxArmed = true
+const activeHtmlClips: HTMLAudioElement[] = []
+const htmlClipTimers = new Set<number>()
+const activeBufferSources: AudioBufferSourceNode[] = []
+
+function silenceHtml(a: HTMLAudioElement) {
   try {
-    a.muted = false
-    a.volume = vol
+    a.pause()
     a.currentTime = 0
-    const p = a.play()
-    if (p && typeof p.then === "function") {
-      p.catch(() => {
-        // Wait for next unlockCoinSounds from a real gesture
-      })
-    }
   } catch {
     // ignore
   }
 }
 
+function scheduleHtmlCut(a: HTMLAudioElement) {
+  const id = window.setTimeout(() => {
+    htmlClipTimers.delete(id)
+    silenceHtml(a)
+    const i = activeHtmlClips.indexOf(a)
+    if (i >= 0) activeHtmlClips.splice(i, 1)
+  }, IMPACT_TAIL_MS)
+  htmlClipTimers.add(id)
+}
+
+function playViaHtmlAudio(vol: number) {
+  if (!coinSfxArmed) return false
+  try {
+    const a = new Audio(COIN_SFX_SRC)
+    a.preload = "auto"
+    a.volume = Math.min(1, vol)
+    activeHtmlClips.push(a)
+    const p = a.play()
+    scheduleHtmlCut(a)
+    if (p && typeof p.then === "function") {
+      p.catch(() => {
+        silenceHtml(a)
+        const i = activeHtmlClips.indexOf(a)
+        if (i >= 0) activeHtmlClips.splice(i, 1)
+      })
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+function playViaWebAudio(vol: number) {
+  if (!coinSfxArmed) return false
+  if (!sfxBuffer || !audioCtx || audioCtx.state !== "running") return false
+  try {
+    const src = audioCtx.createBufferSource()
+    const gain = audioCtx.createGain()
+    src.buffer = sfxBuffer
+    // Short decay envelope — cut the long ring of the source file
+    const t0 = audioCtx.currentTime
+    const dur = IMPACT_TAIL_MS / 1000
+    gain.gain.setValueAtTime(vol, t0)
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur)
+    src.connect(gain)
+    gain.connect(audioCtx.destination)
+    src.start(0)
+    src.stop(t0 + dur + 0.02)
+    activeBufferSources.push(src)
+    src.onended = () => {
+      const i = activeBufferSources.indexOf(src)
+      if (i >= 0) activeBufferSources.splice(i, 1)
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Impact thud on every landing */
 export function playCoinSound(index: number, _spec?: FlyingCoinSpec) {
-  const vol = 0.48 + (index % 5) * 0.04
+  if (!coinSfxArmed) return
+  const vol = 0.68 + (index % 5) * 0.04
+  if (playViaWebAudio(vol)) return
+  if (playViaHtmlAudio(vol)) return
+  unlockCoinSounds()
+  playViaHtmlAudio(vol)
+}
 
-  // Prefer Web Audio only when the context is actually running
-  if (sfxBuffer && audioCtx?.state === "running") {
-    try {
-      const src = audioCtx.createBufferSource()
-      const gain = audioCtx.createGain()
-      src.buffer = sfxBuffer
-      gain.gain.value = vol
-      src.connect(gain)
-      gain.connect(audioCtx.destination)
-      src.start(0)
-      return
-    } catch {
-      // fall through
+/** Arm impacts again (e.g. animation restart) */
+export function armCoinSounds() {
+  coinSfxArmed = true
+}
+
+/** Hard-stop every coin clink — call when the shower ends */
+export function stopAllCoinSounds() {
+  coinSfxArmed = false
+  for (const id of htmlClipTimers) {
+    window.clearTimeout(id)
+  }
+  htmlClipTimers.clear()
+  for (const a of activeHtmlClips.splice(0)) {
+    silenceHtml(a)
+  }
+  if (sfxPool) {
+    for (const a of sfxPool) {
+      silenceHtml(a)
     }
   }
-
-  playViaHtmlAudio(vol)
-
-  // Opportunistic unlock if a gesture somehow raced the first landings
-  if (!sfxUnlocked) {
-    void unlockCoinSounds()
+  for (const src of activeBufferSources.splice(0)) {
+    try {
+      src.stop()
+    } catch {
+      // ignore
+    }
   }
 }
 
 export function playSuccessSound() {
   // hook for success audio
+}
+
+export function isCoinSoundUnlocked() {
+  return sfxUnlocked
 }

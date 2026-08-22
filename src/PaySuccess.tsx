@@ -5,7 +5,7 @@ import copySrc from "./assets/copy.svg"
 import glowSrc from "./assets/glow.svg"
 import { AnimatedThemeToggler } from "./components/AnimatedThemeToggler/AnimatedThemeToggler"
 import { LightRays } from "./components/LightRays/LightRays"
-import { unlockCoinSounds } from "./components/PaymentSuccessJarAnimation/animationConfig"
+import { primeCoinSounds, unlockCoinSounds } from "./components/PaymentSuccessJarAnimation/animationConfig"
 import { PaymentSuccessJarAnimation } from "./components/PaymentSuccessJarAnimation/PaymentSuccessJarAnimation"
 import { useViewportScale } from "./hooks/useViewportScale"
 import "./PaySuccess.css"
@@ -54,6 +54,7 @@ function applyDocumentTheme(next: PageTheme) {
 export function PaySuccess() {
   const [theme, setTheme] = useState<PageTheme>(() => readStoredTheme())
   const [copied, setCopied] = useState(false)
+  const [jarPlay, setJarPlay] = useState(false)
   const scale = useViewportScale()
   const rays = RAYS[theme]
 
@@ -66,38 +67,43 @@ export function PaySuccess() {
     }
   }, [theme])
 
-  // Browsers block audio until a real user gesture — keep trying until unlocked
+  // Unlock audio synchronously on first gesture, then start the jar
   useEffect(() => {
-    let done = false
-    const unlock = () => {
-      void unlockCoinSounds().then((ok) => {
-        if (!ok || done) return
-        done = true
-        window.removeEventListener("pointerdown", unlock)
-        window.removeEventListener("touchstart", unlock)
-        window.removeEventListener("keydown", unlock)
-        window.removeEventListener("click", unlock)
-      })
+    let started = false
+    const startJar = () => {
+      if (started) return
+      started = true
+      setJarPlay(true)
     }
-    window.addEventListener("pointerdown", unlock)
-    window.addEventListener("touchstart", unlock, { passive: true })
-    window.addEventListener("keydown", unlock)
-    window.addEventListener("click", unlock)
+
+    const onGesture = () => {
+      unlockCoinSounds()
+      startJar()
+    }
+
+    window.addEventListener("pointerdown", onGesture, { capture: true })
+    window.addEventListener("touchstart", onGesture, { capture: true, passive: true })
+    window.addEventListener("keydown", onGesture, { capture: true })
+
+    // Prefetch pool/buffer only — do not start muted without a gesture
+    primeCoinSounds()
+
     return () => {
-      window.removeEventListener("pointerdown", unlock)
-      window.removeEventListener("touchstart", unlock)
-      window.removeEventListener("keydown", unlock)
-      window.removeEventListener("click", unlock)
+      window.removeEventListener("pointerdown", onGesture, { capture: true } as EventListenerOptions)
+      window.removeEventListener("touchstart", onGesture, { capture: true } as EventListenerOptions)
+      window.removeEventListener("keydown", onGesture, { capture: true } as EventListenerOptions)
     }
   }, [])
 
   const handleThemeChange = useCallback((next: PageTheme) => {
-    void unlockCoinSounds()
+    unlockCoinSounds()
+    setJarPlay(true)
     setTheme(next)
   }, [])
 
   async function copyOrderId() {
-    void unlockCoinSounds()
+    unlockCoinSounds()
+    setJarPlay(true)
     try {
       await navigator.clipboard.writeText(ORDER_ID)
       setCopied(true)
@@ -216,7 +222,7 @@ export function PaySuccess() {
               <div className="col-payment" data-node-id="1169:209">
                 <div className="payment-surface" data-node-id="1169:210">
                   <div className="success-overlay" data-node-id="1169:212">
-                    <PaymentSuccessJarAnimation theme={theme} play />
+                    <PaymentSuccessJarAnimation theme={theme} play={jarPlay} />
 
                     <div className="status-block">
                       <h1 className="status-title" data-node-id="1169:221">
@@ -233,7 +239,8 @@ export function PaySuccess() {
                       className="cta-btn"
                       type="button"
                       onClick={() => {
-                        void unlockCoinSounds()
+                        unlockCoinSounds()
+                        setJarPlay(true)
                       }}
                     >
                       Вернуться в магазин

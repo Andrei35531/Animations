@@ -1,5 +1,6 @@
 .root {
   position: relative;
+  z-index: 1;
   flex: 1 1 auto;
   display: flex;
   align-items: center;
@@ -32,52 +33,67 @@
 .root--dark {
   --scene-shadow: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.42));
   --interior-tint: rgba(12, 28, 48, 0.06);
-  --ambient-tint: rgba(74, 222, 128, 0.14);
-  --ambient-glow: rgba(52, 211, 153, 0.38);
-  --ambient-core: rgba(167, 243, 208, 0.28);
 }
 
 .root--light {
   --scene-shadow: drop-shadow(0 10px 22px rgba(15, 23, 42, 0.14));
   --interior-tint: rgba(255, 255, 255, 0.04);
-  --ambient-tint: rgba(16, 185, 129, 0.14);
-  --ambient-glow: rgba(52, 211, 153, 0.42);
-  --ambient-core: rgba(209, 250, 229, 0.72);
 }
 
-/* Soft mint success ambient — behind jar, never a flash overlay */
-.ambientPulse {
+/*
+ * Full-panel success ambient — mounted on .success-overlay (not jar-local).
+ * Washes the whole dark/light underlay as the jar fills.
+ */
+.panelAmbient {
   position: absolute;
-  inset: -22% -16% -12%;
+  inset: 0;
   z-index: 0;
   pointer-events: none;
   opacity: 0;
-  transform: scale(0.94);
-  transform-origin: 50% 40%;
-  will-change: opacity, transform;
+  border-radius: inherit;
+  overflow: hidden;
+  will-change: opacity;
 }
 
-.ambientTint {
+.panelAmbientTint {
   position: absolute;
   inset: 0;
-  background: radial-gradient(
-    ellipse 82% 72% at 50% 40%,
-    var(--ambient-core) 0%,
-    var(--ambient-tint) 46%,
-    transparent 74%
+  background: linear-gradient(
+    165deg,
+    rgba(52, 211, 153, 0.2) 0%,
+    rgba(16, 185, 129, 0.12) 45%,
+    rgba(6, 78, 59, 0.16) 100%
   );
 }
 
-.ambientGlow {
+.panelAmbientGlow {
   position: absolute;
-  inset: 8% 14% 18%;
+  inset: -10%;
   background: radial-gradient(
-    circle at 50% 38%,
-    var(--ambient-glow) 0%,
-    transparent 70%
+    ellipse 70% 60% at 50% 38%,
+    rgba(110, 231, 183, 0.42) 0%,
+    rgba(52, 211, 153, 0.16) 45%,
+    transparent 72%
   );
-  filter: blur(22px);
-  opacity: 0.95;
+  filter: blur(28px);
+}
+
+.panelAmbient[data-theme="light"] .panelAmbientTint {
+  background: linear-gradient(
+    165deg,
+    rgba(167, 243, 208, 0.55) 0%,
+    rgba(110, 231, 183, 0.28) 45%,
+    rgba(209, 250, 229, 0.38) 100%
+  );
+}
+
+.panelAmbient[data-theme="light"] .panelAmbientGlow {
+  background: radial-gradient(
+    ellipse 75% 65% at 50% 40%,
+    rgba(167, 243, 208, 0.72) 0%,
+    rgba(52, 211, 153, 0.28) 48%,
+    transparent 74%
+  );
 }
 
 .scene {
