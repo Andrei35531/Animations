@@ -7,10 +7,7 @@ import {
   DEBUG_FLY_MODE,
   DECLINE_FLYING_SEQUENCE,
   DECLINE_TIMING,
-  FINAL_SETTLE,
   FLYING_SEQUENCE,
-  CROWN_LANDING_COUNT,
-  CROWN_ORDER,
   INTERIOR_MASK,
   MOUTH_ZONE,
   PILE_SETTLE_AT,
@@ -23,10 +20,11 @@ import {
   ambientOpacityForProgress,
   ambientPulsePeakForProgress,
   buildFlightPath,
-  findRestingMatch,
+  clampFlyingCoinLocalX,
   findTimeoutMatch,
   shouldCommitToInterior,
   FILL_ORDER,
+  FLYING_LANDING_IDS,
   flightEase,
   progressFromLandedCount,
   armCoinSounds,
@@ -335,6 +333,21 @@ export function PaymentSuccessJarAnimation({
       x: jar.left + jar.width * seat.x,
       y: jar.top + jar.height * seat.y,
     })
+
+    /** Keep airborne coins inside jar walls once past the neck */
+    const clampMotionInsideJar = (motion: MotionState, coinSize: number) => {
+      const { jar: j } = measure()
+      motion.x = clampFlyingCoinLocalX(
+        motion.x,
+        motion.y,
+        coinSize,
+        j.left,
+        j.top,
+        j.width,
+        j.height,
+        motion.rotation,
+      )
+    }
 
     // ── Decline: same scene, reject after familiar approach ─────────────
     if (variant === "decline") {
@@ -949,6 +962,7 @@ export function PaymentSuccessJarAnimation({
               motion.y = seat.y
               motion.rotation = target.rotation
             }
+            clampMotionInsideJar(motion, size)
           }
 
           const coinTl = gsap.timeline({
@@ -1059,8 +1073,9 @@ export function PaymentSuccessJarAnimation({
     }
 
     /**
-     * Bottom-up reveal strictly from landing stages.
-     * targetCount = floor(stageProgress * pileSize) — no time-based unlocks.
+     * Soft-reveal only under the current landing surface.
+     * Never unlock a future flying-landing seat — that makes the next coin
+     * dive through an already-visible pile.
      */
     const revealPileCoins = (
       progress: number,
@@ -1071,16 +1086,57 @@ export function PaymentSuccessJarAnimation({
       root.dataset.empty = "false"
       syncAmbientGlow(pileProgress)
 
-      const targetCount = opts?.forceAll
-        ? FILL_ORDER.length
-        : Math.floor(pileProgress * FILL_ORDER.length)
+      if (opts?.forceAll) {
+        for (const coin of FILL_ORDER) {
+          if (revealed.has(coin.id)) continue
+          if (opts.skipIds?.has(coin.id)) continue
+          revealed.add(coin.id)
+          const el = pileRefs.current[coin.id]
+          if (!el) continue
+          const brightness = 1 + coin.shade
+          el.style.left = `${coin.x * 100}%`
+          el.style.top = `${coin.y * 100}%`
+          el.dataset.revealed = "true"
+          gsap.set(el, {
+            visibility: "visible",
+            xPercent: -50,
+            yPercent: -50,
+            rotation: coin.rotation,
+            scale: 1,
+            x: 0,
+            y: 0,
+            filter: `brightness(${brightness})`,
+          })
+          gsap.to(el, {
+            opacity: coin.depth,
+            duration: 0.1,
+            ease: "power2.out",
+          })
+        }
+        return
+      }
 
-      for (let i = 0; i < targetCount; i += 1) {
-        const coin = FILL_ORDER[i]
-        if (!coin || revealed.has(coin.id)) continue
+      // Current pile top = shallowest landed seat (smallest Y)
+      let surfaceY = Number.POSITIVE_INFINITY
+      for (const coin of FILL_ORDER) {
+        if (!matchedResting.has(coin.id)) continue
+        if (coin.y < surfaceY) surfaceY = coin.y
+      }
+      if (!Number.isFinite(surfaceY)) return
+
+      const softBudget = Math.floor(pileProgress * FILL_ORDER.length)
+      let softShown = matchedResting.size
+
+      for (const coin of FILL_ORDER) {
+        if (revealed.has(coin.id)) continue
         if (opts?.skipIds?.has(coin.id)) continue
-        // Crown / top mound: only via real landings — never soft-pop into depth
-        if (!opts?.forceAll && (coin.surface || coin.y <= TOP_SURFACE_Y)) continue
+        // Reserved for a real flying landing — wait for impact
+        if (FLYING_LANDING_IDS.has(coin.id) && !matchedResting.has(coin.id)) continue
+        // Only densify under / at the current surface — never grow the mound ahead
+        if (coin.y < surfaceY - 0.012) continue
+        if (coin.surface || coin.y <= TOP_SURFACE_Y) continue
+        if (softShown >= softBudget) break
+        softShown += 1
         revealed.add(coin.id)
         const el = pileRefs.current[coin.id]
         if (!el) continue
@@ -1090,6 +1146,8 @@ export function PaymentSuccessJarAnimation({
         el.dataset.revealed = "true"
         gsap.set(el, {
           visibility: "visible",
+          xPercent: -50,
+          yPercent: -50,
           rotation: coin.rotation,
           scale: 1,
           x: 0,
@@ -1149,65 +1207,8 @@ export function PaymentSuccessJarAnimation({
       })
 
       if (landedCount >= totalFlying) {
-        // Finish any leftover crown seats on the surface (no deep soft-pop mid-stream)
-        for (const coin of CROWN_ORDER) {
-          if (revealed.has(coin.id)) continue
-          revealed.add(coin.id)
-          const el = pileRefs.current[coin.id]
-          if (!el) continue
-          const brightness = 1 + coin.shade
-          el.style.left = `${coin.x * 100}%`
-          el.style.top = `${coin.y * 100}%`
-          el.dataset.revealed = "true"
-          gsap.set(el, {
-            visibility: "visible",
-            rotation: coin.rotation,
-            scale: 1,
-            x: 0,
-            y: 0,
-            filter: `brightness(${brightness})`,
-          })
-          gsap.to(el, {
-            opacity: coin.depth,
-            duration: 0.12,
-            ease: "power2.out",
-          })
-        }
-
-        // Last coin: impact → tiny redistribution → settle (no loop after)
-        const impactId = match?.id ?? null
-        const neighbors = CROWN_ORDER.filter((c) => revealed.has(c.id)).slice(
-          -FINAL_SETTLE.neighborCount,
-        )
-        for (let n = 0; n < neighbors.length; n += 1) {
-          const coin = neighbors[n]
-          const el = pileRefs.current[coin.id]
-          if (!el) continue
-          const isImpact = impactId !== null && coin.id === impactId
-          const amp = isImpact
-            ? FINAL_SETTLE.impactY
-            : FINAL_SETTLE.neighborY * (0.55 + (n % 5) * 0.09)
-          const rotNudge = isImpact ? 0 : (n % 2 === 0 ? 1 : -1) * 0.6
-          gsap
-            .timeline()
-            .to(el, {
-              y: amp * 0.35,
-              rotation: `+=${rotNudge * 0.35}`,
-              duration: FINAL_SETTLE.compressMs / 1000,
-              ease: "power2.in",
-            })
-            .to(el, {
-              y: -amp,
-              duration: FINAL_SETTLE.riseMs / 1000,
-              ease: "power2.out",
-            })
-            .to(el, {
-              y: 0,
-              rotation: coin.rotation,
-              duration: FINAL_SETTLE.settleMs / 1000,
-              ease: "power2.out",
-            })
-        }
+        // Finish any leftover seats (crown + density fillers)
+        revealPileCoins(1, { forceAll: true })
 
         window.setTimeout(() => {
           if (isLive()) stopAllCoinSounds()
@@ -1222,8 +1223,8 @@ export function PaymentSuccessJarAnimation({
       if (!spec?.seat) return gsap.timeline()
       const { jar } = measure()
 
-      const preferCrown = flyIndex >= totalFlying - CROWN_LANDING_COUNT
-      const match = findRestingMatch(spec.seat, matchedResting, preferCrown)
+      // Strict bottom → top: each flyer claims its pile seat by index
+      const match = FILL_ORDER[flyIndex] ?? null
       if (match) matchedResting.add(match.id)
 
       const target = match ?? {
@@ -1352,6 +1353,7 @@ export function PaymentSuccessJarAnimation({
           motion.y = seat.y
           motion.rotation = target.rotation
         }
+        clampMotionInsideJar(motion, size)
       }
 
       const coinTl = gsap.timeline({
@@ -1430,20 +1432,12 @@ export function PaymentSuccessJarAnimation({
 
         master.call(() => stopAllCoinSounds(), [], PILE_SETTLE_AT)
 
-        // Whole-mass micro settle — tiny, one-shot, then fully static
-        const microDur = TIMING.pileMicroSettleMs / 1000
-        master
-          .to(interiorClip, { y: -1.1, duration: microDur * 0.28, ease: "power2.out" }, PILE_SETTLE_AT)
-          .to(interiorClip, { y: 0.45, duration: microDur * 0.32, ease: "power1.inOut" })
-          .to(interiorClip, { y: 0, duration: microDur * 0.4, ease: "power2.out" })
-
         master.call(
           () => {
             if (!isLive()) return
             stopAllCoinSounds()
             flyLayer.innerHTML = ""
             fallingInside.innerHTML = ""
-            // Hard-stop any residual pile tweens — fully static finale
             for (const coin of RESTING_PILE) {
               const el = pileRefs.current[coin.id]
               if (!el || !revealed.has(coin.id)) continue
@@ -1454,10 +1448,10 @@ export function PaymentSuccessJarAnimation({
             syncAmbientGlow(1)
           },
           [],
-          PILE_SETTLE_AT + microDur,
+          PILE_SETTLE_AT,
         )
 
-        const finalAt = PILE_SETTLE_AT + microDur + 0.04
+        const finalAt = PILE_SETTLE_AT + 0.04
         if (ambient) {
           master.to(
             ambient,

@@ -197,11 +197,11 @@
   left: 50%;
   bottom: 0;
   transform: translateX(-50%);
-  width: clamp(150px, 82%, 230px);
+  /* Mason jar (no pedestal) — a bit taller in frame */
+  width: clamp(160px, 78%, 250px);
   aspect-ratio: 1;
   opacity: 1;
   visibility: visible;
-  /* No CSS drop-shadow — it painted a muddy oval under the pedestal */
 }
 
 .layer {
@@ -270,6 +270,9 @@
 
 .jarGlassFront {
   z-index: 5;
+  mix-blend-mode: screen;
+  opacity: 0.92;
+  pointer-events: none;
 }
 
 .coin {

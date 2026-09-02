@@ -2,58 +2,80 @@ import jarBase from "../../assets/payment-success/jar-base.png"
 import jarGlassFront from "../../assets/payment-success/jar-glass-front.png"
 import jarInnerMask from "../../assets/payment-success/jar-inner-mask.png"
 import coin1 from "../../assets/payment-success/coins/coin-1.png"
-import coin2 from "../../assets/payment-success/coins/coin-2b.png"
-import coin3 from "../../assets/payment-success/coins/coin-3b.png"
+import coin2 from "../../assets/payment-success/coins/coin-2.png"
+import coin3 from "../../assets/payment-success/coins/coin-3.png"
 import coin4 from "../../assets/payment-success/coins/coin-4.png"
+import coin5 from "../../assets/payment-success/coins/coin-5.png"
 import coin6 from "../../assets/payment-success/coins/coin-6.png"
+import coin7 from "../../assets/payment-success/coins/coin-7.png"
+import coin8 from "../../assets/payment-success/coins/coin-8.png"
+import coin9 from "../../assets/payment-success/coins/coin-9.png"
+import coin10 from "../../assets/payment-success/coins/coin-10.png"
 
 export const ASSETS = {
   jarBase,
   jarGlassFront,
   jarInnerMask,
-  /** coin-5 omitted (edge-on rim = shard). coin-2/3 use cleaned *b cuts. */
-  coins: [coin1, coin2, coin3, coin4, coin6] as const,
+  /** Ruble coins from public/раскадровка/монеты (10 angles). */
+  coins: [coin1, coin2, coin3, coin4, coin5, coin6, coin7, coin8, coin9, coin10] as const,
 } as const
 
 export const INTERIOR_MASK = {
-  sizeX: "96%",
-  sizeY: "90%",
+  /** Mask canvas matches jar-base 1:1 (no pedestal crop). */
+  sizeX: "100%",
+  sizeY: "100%",
   posX: "50%",
   posY: "50%",
 } as const
 
 export const MOUTH_ZONE = {
-  /** Open rim lip on jar-base art (~0.077 of asset) */
-  enterYRatio: 0.08,
-  /** Past shoulders — only then path may drift to seat / switch to inside layer */
-  neckExitYRatio: 0.34,
+  /** Inner lip below screw rim — mason jar from раскадровка */
+  enterYRatio: 0.155,
+  /** Past shoulders into the cylindrical body */
+  neckExitYRatio: 0.265,
   /**
    * Hard-switch to masked interior only once the whole coin is below the neck.
    * Earlier commit clips coins in half against the jar mask.
    */
-  interiorCommitYRatio: 0.44,
-  /** Outer mouth ≈ 20% of asset; funnel = central hole */
-  openingRatio: 0.2,
-  funnelRatio: 0.4,
+  interiorCommitYRatio: 0.35,
+  /** Wide mouth ≈ 42% of asset width */
+  openingRatio: 0.42,
+  funnelRatio: 0.45,
   /** Last px above lip: X locked (nearly vertical drop) */
   verticalLockPx: 90,
   /** Start converging X toward mouth this far above the lip */
-  funnelStartPx: 100,
+  funnelStartPx: 110,
   /** Local emitter half-width as fraction of mouth opening */
-  emitterMouthMul: 1.05,
+  emitterMouthMul: 1.0,
 } as const
 
-export const JAR_FLOOR_Y = 0.855
+export const JAR_FLOOR_Y = 0.876
+
+/** Soft-fill never pops coins above this Y (smaller Y = higher in jar) without a landing match */
+export const TOP_SURFACE_Y = 0.38
+
+/** Last N flying coins claim the crown / top mound — they must not dive into the body */
+export const CROWN_LANDING_COUNT = 12
+
+/** Soft-fill never pops coins above this Y without a landing match */
+export const SOFT_REVEAL_MAX_Y = TOP_SURFACE_Y
+
+/** Pile crown sits just under the mason-jar shoulders */
+export const PILE_FILL_TOP_Y = 0.305
 
 /** Useful interior span floor → mouth for fill math */
 const INTERIOR_SPAN = JAR_FLOOR_Y - MOUTH_ZONE.enterYRatio
+
+/** Pixel size of coin sprite in the jar interior coordinate system */
+export const COIN_SIZE = 48
+
+/** Typical rendered jar width (px) — middle of responsive clamp range */
+const TYPICAL_JAR_WIDTH_PX = 185
 
 export const TIMING = {
   jarEnter: 0.1,
   /** Short metallic settle — no cartoon bounce */
   impactSettleMs: 80,
-  /** Final mass redistributes + settles after last coin */
-  pileMicroSettleMs: 220,
   /** Hard cut after pose-matched handoff — no dual-frame ghost */
   landingSwapMs: 0,
   jarPulseAt: 1.05,
@@ -61,16 +83,6 @@ export const TIMING = {
   finalAmbientSettle: 0.4,
   /** Total story ends calm ~3.1s (last land + settle) */
   holdFinalUntil: 3.2,
-} as const
-
-/** Secondary bounce amplitude (px) on final impact — keep tiny */
-export const FINAL_SETTLE = {
-  impactY: 2.8,
-  neighborY: 1.35,
-  neighborCount: 12,
-  compressMs: 45,
-  riseMs: 90,
-  settleMs: 160,
 } as const
 
 /**
@@ -236,9 +248,9 @@ function buildOrganicDelays(count: number): number[] {
   return delays.slice(0, count)
 }
 
-/** Deterministic dense local shower — enough landings to justify full pile */
-function buildDenseFlyingSequence(): FlyingCoinSpec[] {
-  const delays = buildOrganicDelays(72)
+/** Deterministic dense local shower — one coin per count */
+function buildDenseFlyingSequence(count: number): FlyingCoinSpec[] {
+  const delays = buildOrganicDelays(count)
 
   const coins: FlyingCoinSpec[] = []
   for (let i = 0; i < delays.length; i += 1) {
@@ -248,7 +260,7 @@ function buildDenseFlyingSequence(): FlyingCoinSpec[] {
     const isHero = i === 0
     const isClosing = i >= delays.length - 3
     const isFinal = i === delays.length - 1
-    const progressHint = (i + 1) / delays.length
+    const progressHint = (i + 1) / Math.max(1, delays.length)
 
     let duration = isHero ? 0.48 : isFinal ? 0.36 : isClosing ? 0.38 : 0.38
     if (!isHero && !isClosing) duration = 0.34 + (i % 5) * 0.014
@@ -286,9 +298,9 @@ function buildDenseFlyingSequence(): FlyingCoinSpec[] {
 
 /**
  * Dense controlled shower — organic rhythm, calm by ~3.1s.
- * Deterministic, no Math.random. Coin count unchanged (fill ↔ landings).
+ * Length is rebuilt to match FILL_ORDER after the pile is constructed.
  */
-export const FLYING_SEQUENCE_FULL: FlyingCoinSpec[] = buildDenseFlyingSequence()
+export let FLYING_SEQUENCE_FULL: FlyingCoinSpec[] = buildDenseFlyingSequence(72)
 
 export const DEBUG_FLY_MODE = false as false | "top" | "left" | "right" | "trio"
 
@@ -303,7 +315,9 @@ function pickFlyingSequence(): FlyingCoinSpec[] {
   const src =
     DEBUG_FLY_MODE === false
       ? FLYING_SEQUENCE_FULL
-      : DEBUG_PICK[DEBUG_FLY_MODE].map((i) => FLYING_SEQUENCE_FULL[i])
+      : (DEBUG_PICK[DEBUG_FLY_MODE].map((i) => FLYING_SEQUENCE_FULL[i]).filter(
+          Boolean,
+        ) as FlyingCoinSpec[])
 
   return src.map((coin) => {
     const seat = coin.seat
@@ -323,13 +337,13 @@ function pickFlyingSequence(): FlyingCoinSpec[] {
   })
 }
 
-export const FLYING_SEQUENCE: FlyingCoinSpec[] = pickFlyingSequence()
+export let FLYING_SEQUENCE: FlyingCoinSpec[] = pickFlyingSequence()
 
 /**
  * Three coins for decline — same art direction as success openers,
  * staggered so the reject reads as a system refusal, not a pile.
  */
-export const DECLINE_FLYING_SEQUENCE: FlyingCoinSpec[] = [
+export let DECLINE_FLYING_SEQUENCE: FlyingCoinSpec[] = [
   {
     ...FLYING_SEQUENCE_FULL[0],
     id: 0,
@@ -365,13 +379,13 @@ export const DECLINE_FLYING_SEQUENCE: FlyingCoinSpec[] = [
   },
 ]
 
-const FLY_TOTAL = FLYING_SEQUENCE.length
+let FLY_TOTAL = FLYING_SEQUENCE.length
 
 /**
  * Fill stages unlock ONLY from landedCoinCount — never from timeline alone.
  * Landed thresholds scale with the flying stream size.
  */
-export const FILL_STAGE_THRESHOLDS: { landed: number; progress: number }[] = (
+export let FILL_STAGE_THRESHOLDS: { landed: number; progress: number }[] = (
   [
     [0.04, 0.07],
     [0.08, 0.14],
@@ -402,15 +416,6 @@ export function progressFromLandedCount(landed: number, totalFlying: number) {
   return Math.min(1, progress)
 }
 
-/** Soft-fill never pops coins above this Y (smaller Y = higher in jar) without a landing match */
-export const TOP_SURFACE_Y = 0.44
-
-/** Last N flying coins claim the crown / top mound — they must not dive into the body */
-export const CROWN_LANDING_COUNT = 12
-
-/** Soft-fill never pops coins above this Y without a landing match */
-export const SOFT_REVEAL_MAX_Y = TOP_SURFACE_Y
-
 /** Soft ambient settle opacity for fill progress 0…1 */
 export function ambientOpacityForProgress(progress: number) {
   const t = Math.max(0, Math.min(1, progress))
@@ -438,21 +443,82 @@ export type RestingCoinSpec = {
   surface?: boolean
 }
 
+/** Align flying stream 1:1 with resting seats (bottom → top). */
+function alignFlyingToSeats(seats: RestingCoinSpec[]): FlyingCoinSpec[] {
+  const n = seats.length
+  return buildDenseFlyingSequence(n).map((coin, i) => {
+    const seat = seats[i]!
+    return {
+      ...coin,
+      id: i,
+      asset: seat.asset,
+      seat: {
+        x: seat.x,
+        y: seat.y,
+        rotation: seat.rotation,
+        scale: seat.scale,
+        revealAt: (i + 1) / n,
+      },
+      hero: i === 0,
+      final: i === n - 1,
+      sound: i === 0 || i === n - 1 || i % 5 === 0,
+    }
+  })
+}
+
 function seeded(seed: number, ch: number) {
   const v = Math.sin(seed * 12.9898 + ch * 78.233) * 43758.5453
   return v - Math.floor(v)
 }
 
 /**
- * Interior half-width of the bulbous jar at normalized Y (center = 0.5).
- * Tuned so edge coins sit flush against the glass with no air gaps.
+ * Interior half-width of the mason jar at normalized Y (center = 0.5).
+ * Jar art spans ~0.21–0.79 of the asset; body half-width ≈ 0.255.
  */
 function jarHalfWidthAt(y: number): number {
   const t = (JAR_FLOOR_Y - y) / Math.max(0.001, INTERIOR_SPAN)
-  if (t < 0.12) return 0.4 + t * 0.35
-  if (t < 0.55) return 0.442 - (t - 0.12) * 0.04
-  if (t < 0.78) return 0.425 - (t - 0.55) * 0.35
-  return Math.max(0.2, 0.345 - (t - 0.78) * 0.55)
+  // t=0 floor → t=1 mouth
+  if (t < 0.1) return 0.22 + t * 0.35
+  if (t < 0.75) return 0.255
+  if (t < 0.9) return 0.255 - (t - 0.75) * 0.35
+  return Math.max(0.16, 0.202 - (t - 0.9) * 0.4)
+}
+
+/** Coin half-width in normalized jar coords, including tilt */
+function restingCoinHalfNorm(scale: number, rotationDeg: number): number {
+  const base = (COIN_SIZE * scale) / (2 * TYPICAL_JAR_WIDTH_PX)
+  const rot = (rotationDeg * Math.PI) / 180
+  return base * (Math.abs(Math.cos(rot)) + Math.abs(Math.sin(rot))) + 0.012
+}
+
+/** Keep coin center inside jar walls at normalized Y (resting + flying) */
+function fitRestingCoinX(x: number, y: number, scale: number, rotation: number): number {
+  const wallHalf = jarHalfWidthAt(y)
+  const coinHalf = restingCoinHalfNorm(scale, rotation)
+  // Shoulders are tighter than bodyHalf math — extra pad under the neck
+  const shoulderPad = y < 0.36 ? 0.016 : 0.008
+  const maxOffset = Math.max(0.024, wallHalf - coinHalf - shoulderPad)
+  return Math.min(0.5 + maxOffset, Math.max(0.5 - maxOffset, x))
+}
+
+/** Clamp flying coin center-X inside jar walls (panel-local px coords) */
+export function clampFlyingCoinLocalX(
+  x: number,
+  y: number,
+  coinSize: number,
+  jarLeft: number,
+  jarTop: number,
+  jarW: number,
+  jarH: number,
+  rotation = 0,
+): number {
+  const neckY = jarTop + jarH * MOUTH_ZONE.neckExitYRatio
+  if (y < neckY) return x
+  const yNorm = Math.max(0, Math.min(1, (y - jarTop) / Math.max(1, jarH)))
+  const scale = coinSize / COIN_SIZE
+  const xNorm = (x - jarLeft) / Math.max(1, jarW)
+  const clamped = fitRestingCoinX(xNorm, yNorm, scale, rotation)
+  return jarLeft + clamped * jarW
 }
 
 /**
@@ -460,9 +526,8 @@ function jarHalfWidthAt(y: number): number {
  * Stops just below shoulders so top coins rest on the pile, not float in the neck.
  */
 function buildRestingPile(): RestingCoinSpec[] {
-  // ~0.36 ≈ below neckExit (0.34); leave a little air under the mouth
-  const fillTop = 0.365
-  const step = 0.03
+  const fillTop = PILE_FILL_TOP_Y
+  const step = 0.028
 
   const levels: {
     level: number
@@ -472,22 +537,21 @@ function buildRestingPile(): RestingCoinSpec[] {
     topLayer?: boolean
   }[] = []
 
-  let y = 0.848
+  let y = 0.86
   let level = 1
   while (y >= fillTop - 0.001) {
     const t = (JAR_FLOOR_Y - y) / Math.max(0.001, INTERIOR_SPAN)
-    let count = 11
-    if (t < 0.1) count = 9
-    else if (t < 0.25) count = 10
-    else if (t > 0.62) count = 7
-    else if (t > 0.52) count = 8
-    else if (t > 0.42) count = 9
+    let count = 7
+    if (t < 0.1) count = 5
+    else if (t < 0.25) count = 6
+    else if (t > 0.7) count = 5
+    else if (t > 0.55) count = 6
 
     const isTop = y <= fillTop + step * 0.55
     levels.push({
       level,
       yBase: y,
-      count: isTop ? 6 : count,
+      count: isTop ? 5 : count,
       revealAt: Math.min(0.98, 0.05 + (level - 1) * 0.07),
       topLayer: isTop,
     })
@@ -501,9 +565,9 @@ function buildRestingPile(): RestingCoinSpec[] {
 
   for (const lvl of levels) {
     const half = jarHalfWidthAt(lvl.yBase)
-    // Keep centers inset so the sprite disk stays inside the jar mask
-    const edgeInset = 0.13
-    const usableHalf = Math.max(0.1, half - edgeInset)
+    // Slightly wider inset only on crown — keeps body density, tucks shoulders in
+    const edgeInset = lvl.topLayer ? 0.068 : 0.045
+    const usableHalf = Math.max(0.08, half - edgeInset)
 
     for (let i = 0; i < lvl.count; i += 1) {
       const slot = lvl.count === 1 ? 0 : i / (lvl.count - 1) - 0.5
@@ -532,13 +596,18 @@ function buildRestingPile(): RestingCoinSpec[] {
         scale = 0.98 + seeded(id, 4) * 0.04
       }
 
+      const needsWallFit = lvl.topLayer || cy <= TOP_SURFACE_Y
+      const finalX = needsWallFit
+        ? fitRestingCoinX(x, cy, scale, rotation)
+        : Math.min(0.9, Math.max(0.1, x))
+
       const depth = 0.84 + seeded(id, 7) * 0.16
       const shade = (seeded(id, 8) - 0.5) * 0.08
 
       coins.push({
         id,
         asset: id % ASSETS.coins.length,
-        x: Math.min(0.9, Math.max(0.1, x)),
+        x: finalX,
         y: cy,
         rotation,
         scale,
@@ -586,10 +655,75 @@ export const CROWN_ORDER: RestingCoinSpec[] = FILL_ORDER.filter(
 ).sort((a, b) => b.y - a.y || a.x - b.x || a.id - b.id)
 
 /**
- * Bottom ~25% of pile height — timeout stops here (no further stream).
- * fillTop in buildRestingPile is 0.365.
+ * Seats that flying coins will claim — exact 1:1 with the resting pile.
+ * Soft-reveal must never unlock these ahead of a real landing.
  */
-const TIMEOUT_PILE_TOP_Y = JAR_FLOOR_Y - TIMEOUT_FILL_FRAC * (JAR_FLOOR_Y - 0.365)
+export const FLYING_LANDING_ORDER: RestingCoinSpec[] = FILL_ORDER
+
+export const FLYING_LANDING_IDS = new Set(FLYING_LANDING_ORDER.map((c) => c.id))
+
+// Rebuild flying stream — one fewer than pile seats: top crown appears on finale reveal
+FLYING_SEQUENCE_FULL = alignFlyingToSeats(FILL_ORDER).slice(0, -1)
+FLYING_SEQUENCE = pickFlyingSequence()
+FLY_TOTAL = FLYING_SEQUENCE.length
+FILL_STAGE_THRESHOLDS = (
+  [
+    [0.04, 0.07],
+    [0.08, 0.14],
+    [0.14, 0.22],
+    [0.21, 0.32],
+    [0.3, 0.42],
+    [0.42, 0.52],
+    [0.53, 0.62],
+    [0.67, 0.74],
+    [0.8, 0.86],
+    [0.92, 1.0],
+    [1.0, 1.0],
+  ] as const
+).map(([frac, progress]) => ({
+  landed: Math.max(1, Math.round(frac * FLY_TOTAL)),
+  progress,
+}))
+DECLINE_FLYING_SEQUENCE = [
+  {
+    ...FLYING_SEQUENCE_FULL[0],
+    id: 0,
+    delay: 0.14,
+    duration: 0.72,
+    mouthOffset: -0.12,
+    edge: "topLeft",
+    hero: true,
+    final: false,
+    seat: { x: 0.5, y: MOUTH_ZONE.enterYRatio + 0.04, rotation: -8, scale: 1.02, revealAt: 1 },
+  },
+  {
+    ...FLYING_SEQUENCE_FULL[Math.min(2, FLYING_SEQUENCE_FULL.length - 1)],
+    id: 1,
+    delay: 0.26,
+    duration: 0.68,
+    mouthOffset: 0.1,
+    edge: "topRight",
+    hero: false,
+    final: false,
+    seat: { x: 0.5, y: MOUTH_ZONE.enterYRatio + 0.04, rotation: 10, scale: 0.96, revealAt: 1 },
+  },
+  {
+    ...FLYING_SEQUENCE_FULL[Math.min(4, FLYING_SEQUENCE_FULL.length - 1)],
+    id: 2,
+    delay: 0.36,
+    duration: 0.66,
+    mouthOffset: 0.02,
+    edge: "top",
+    hero: false,
+    final: false,
+    seat: { x: 0.5, y: MOUTH_ZONE.enterYRatio + 0.04, rotation: -4, scale: 0.98, revealAt: 1 },
+  },
+]
+
+/**
+ * Bottom ~25% of pile height — timeout stops here (no further stream).
+ */
+const TIMEOUT_PILE_TOP_Y = JAR_FLOOR_Y - TIMEOUT_FILL_FRAC * (JAR_FLOOR_Y - PILE_FILL_TOP_Y)
 
 export const TIMEOUT_FILL_ORDER: RestingCoinSpec[] = FILL_ORDER.filter(
   (c) => c.y >= TIMEOUT_PILE_TOP_Y,
@@ -633,8 +767,6 @@ export function findTimeoutMatch(used: Set<number>) {
   }
   return null
 }
-
-export const COIN_SIZE = 64
 
 export const PILE_SETTLE_AT =
   FLYING_SEQUENCE[FLYING_SEQUENCE.length - 1].delay +
@@ -685,10 +817,11 @@ export function buildFlightPath(
 
   const funnelStartY = mouth.y - MOUTH_ZONE.funnelStartPx
   const verticalY = mouth.y - MOUTH_ZONE.verticalLockPx
-  // Deep past shoulders before any seat X blend (safe for inside-layer handoff)
+  // Drop only as deep as the seat — never force a mid-jar dive past the pile top
+  const neckClearY = jarTop + jarH * MOUTH_ZONE.neckExitYRatio
   const columnEndY = Math.min(
-    seat.y - 8,
-    Math.max(mouth.y + jarH * 0.28, jarTop + jarH * MOUTH_ZONE.neckExitYRatio + jarH * 0.04),
+    seat.y - Math.max(6, coinSize * 0.35),
+    Math.max(neckClearY, Math.min(seat.y - 4, mouth.y + jarH * 0.12)),
   )
 
   const emitHalf = mouthOpening * MOUTH_ZONE.emitterMouthMul
@@ -745,9 +878,12 @@ export function buildFlightPath(
       c1 = { x: entryX, y: lerp(p0.y, p3.y, 0.34) }
       c2 = { x: entryX, y: lerp(p0.y, p3.y, 0.66) }
     } else if (i === segs - 1) {
-      // Only after columnEnd: short downward blend into seat (never sideways through glass)
-      c1 = { x: entryX, y: lerp(p0.y, p3.y, 0.45) }
-      c2 = { x: lerp(entryX, p3.x, 0.35), y: lerp(p0.y, p3.y, 0.78) }
+      // Upper seats: stay vertical through the neck — only glide sideways at seat depth
+      const seatYNorm = (p3.y - jarTop) / Math.max(1, jarH)
+      const holdCenter =
+        seatYNorm < TOP_SURFACE_Y ? 0.88 : seatYNorm < 0.55 ? 0.76 : 0.58
+      c1 = { x: entryX, y: lerp(p0.y, p3.y, 0.4) }
+      c2 = { x: entryX, y: lerp(p0.y, p3.y, holdCenter) }
     } else {
       c1 = {
         x: p0.x + (p3.x - prev.x) / 6,
@@ -778,6 +914,17 @@ export function buildFlightPath(
       const t = smoothstep((p.y - funnelStartY) / Math.max(1, verticalY - funnelStartY))
       p.x = lerp(p.x, entryX, t)
     }
+  }
+
+  const jarLeft = mouth.x - jarW * 0.5
+  const neckY = jarTop + jarH * MOUTH_ZONE.neckExitYRatio
+  const flightScale = coinSize / COIN_SIZE
+  for (const p of samples) {
+    if (p.y < neckY) continue
+    const yNorm = (p.y - jarTop) / Math.max(1, jarH)
+    const xNorm = (p.x - jarLeft) / Math.max(1, jarW)
+    const clamped = fitRestingCoinX(xNorm, yNorm, flightScale, 0)
+    p.x = jarLeft + clamped * jarW
   }
 
   return samples
@@ -815,34 +962,31 @@ export function flightEase(t: number): number {
   return 0.7 + 0.3 * (1 - Math.pow(1 - u, 2.4))
 }
 
+/**
+ * Next empty landing seat — always bottom-up along FLYING_LANDING_ORDER
+ * so each coin settles on the current pile surface, never under it.
+ */
 export function findRestingMatch(
-  seat: SeatPosition,
+  _seat: SeatPosition,
   used: Set<number>,
   preferCrown = false,
 ) {
-  const primary = preferCrown ? CROWN_ORDER : BODY_ORDER
-  const secondary = preferCrown ? BODY_ORDER : CROWN_ORDER
+  const order = preferCrown
+    ? [
+        ...FLYING_LANDING_ORDER.filter((c) => c.surface || c.y <= TOP_SURFACE_Y),
+        ...FLYING_LANDING_ORDER.filter((c) => !c.surface && c.y > TOP_SURFACE_Y),
+      ]
+    : FLYING_LANDING_ORDER
 
-  for (const coin of primary) {
+  for (const coin of order) {
     if (!used.has(coin.id)) return coin
   }
-  for (const coin of secondary) {
+
+  // Fallback: any unused resting seat, deepest first
+  for (const coin of FILL_ORDER) {
     if (!used.has(coin.id)) return coin
   }
-
-  let best: RestingCoinSpec | null = null
-  let bestDist = Infinity
-  for (const coin of RESTING_PILE) {
-    if (used.has(coin.id)) continue
-    const dx = coin.x - seat.x
-    const dy = coin.y - seat.y
-    const dist = dx * dx + dy * dy
-    if (dist < bestDist) {
-      bestDist = dist
-      best = coin
-    }
-  }
-  return best
+  return null
 }
 
 const COIN_SFX_SRC = "/coin-impact.mp3?v=3"

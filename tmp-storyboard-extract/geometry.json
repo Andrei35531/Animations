@@ -1,0 +1,16 @@
+{
+  "jarLeftN": 0.21052631578947367,
+  "jarRightN": 0.7902711323763956,
+  "jarTopN": 0.07894736842105263,
+  "jarBotN": 0.9266347687400319,
+  "mouthY": 0.16371610845295057,
+  "bodyHalfFromCenter": 0.2608851674641149,
+  "suggested": {
+    "enterYRatio": 0.155,
+    "neckExitYRatio": 0.265,
+    "interiorCommitYRatio": 0.35,
+    "openingRatio": 0.417,
+    "JAR_FLOOR_Y": 0.876,
+    "jarHalfBody": 0.255
+  }
+}

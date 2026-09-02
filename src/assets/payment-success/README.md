@@ -1,13 +1,15 @@
 # Payment success animation assets
 
-These files are copied from `public/материалы для анимации/` for Vite bundling.
-
 | File | Source | Role |
 |------|--------|------|
-| `jar-base.png` | `(1).png` | Empty jar + pedestal |
-| `jar-glass-front.png` | `(2).png` | Front glass overlay |
-| `jar-inner-mask.png` | `(3).png` | Inner area mask for coins |
-| `coins/coin-1…6.png` | `(4).png` sprite sheet | Individual coin angles |
-| `success-badge.png` | `(5).png` | Green success check |
+| `jar-base.png` | `public/раскадровка` frame `(1)` | Glass jar |
+| `jar-glass-front.png` | highlights from `(1)` | Front specular overlay |
+| `jar-inner-mask.png` | derived from `(1)` | Interior clip mask |
+| `coins/coin-1…10.png` | `public/раскадровка/монеты` | Ruble coin angles |
 
-Originals remain in `public/материалы для анимации/`.
+Re-run extraction:
+
+```bash
+node scripts/extract-raskadrovka-assets.mjs   # jar layers
+node scripts/extract-coin-storyboard.mjs      # coins
+```
