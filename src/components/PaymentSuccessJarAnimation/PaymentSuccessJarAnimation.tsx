@@ -37,8 +37,6 @@ import {
   type RestingCoinSpec,
 } from "./animationConfig"
 import styles from "./PaymentSuccessJarAnimation.module.css"
-import { SuccessStampSeal } from "./SuccessStampSeal"
-import { playSuccessStampAnimation, resetSuccessStamp } from "./successStampMotion"
 
 export type PaymentSuccessJarAnimationProps = {
   play?: boolean
@@ -141,10 +139,8 @@ function forceEmptyState(
   ambient: HTMLElement | null,
   pileEls: HTMLElement[],
   flyLayer: HTMLElement | null,
-  sealEl: HTMLElement | null = null,
 ) {
   gsap.killTweensOf([jarStack, fallingInside, ...pileEls])
-  resetSuccessStamp(sealEl)
   if (ambient) {
     gsap.killTweensOf(ambient)
     gsap.set(ambient, { opacity: 0 })
@@ -208,7 +204,6 @@ export function PaymentSuccessJarAnimation({
   const interiorClipRef = useRef<HTMLDivElement>(null)
   const ambientRef = useRef<HTMLElement | null>(null)
   const flyLayerRef = useRef<HTMLElement | null>(null)
-  const sealRef = useRef<HTMLDivElement>(null)
   const pileRefs = useRef<(HTMLDivElement | null)[]>([])
   const runIdRef = useRef(0)
 
@@ -234,7 +229,7 @@ export function PaymentSuccessJarAnimation({
     ambientRef.current = ambient
 
     const pileEls = Array.from(interiorClip.querySelectorAll(`.${styles.pileCoin}`)) as HTMLElement[]
-    forceEmptyState(root, jarStack, fallingInside, ambient, pileEls, flyLayer, sealRef.current)
+    forceEmptyState(root, jarStack, fallingInside, ambient, pileEls, flyLayer)
 
     root.dataset.ready = "true"
     root.dataset.empty = "true"
@@ -269,7 +264,7 @@ export function PaymentSuccessJarAnimation({
     root.dataset.ready = "false"
     root.dataset.variant = variant
     flyLayer.dataset.ready = "false"
-    forceEmptyState(root, jarStack, fallingInside, ambient, pileEls, flyLayer, sealRef.current)
+    forceEmptyState(root, jarStack, fallingInside, ambient, pileEls, flyLayer)
     root.dataset.ready = "true"
     root.dataset.empty = "true"
     flyLayer.dataset.ready = "true"
@@ -312,13 +307,12 @@ export function PaymentSuccessJarAnimation({
           gsap.set(ambient, { opacity: TIMING.finalAmbientSettle })
         }
         root.dataset.empty = "false"
-        playSuccessStampAnimation(sealRef.current, true)
       }
       playSuccessSound()
       onComplete?.()
       return () => {
         runIdRef.current += 1
-        forceEmptyState(root, jarStack, fallingInside, ambient, pileEls, flyLayer, sealRef.current)
+        forceEmptyState(root, jarStack, fallingInside, ambient, pileEls, flyLayer)
         root.dataset.ready = "true"
         flyLayer.dataset.ready = "true"
       }
@@ -587,7 +581,7 @@ export function PaymentSuccessJarAnimation({
       return () => {
         runIdRef.current += 1
         ctx.revert()
-        forceEmptyState(root, jarStack, fallingInside, ambient, pileEls, flyLayer, sealRef.current)
+        forceEmptyState(root, jarStack, fallingInside, ambient, pileEls, flyLayer)
         root.dataset.ready = "true"
         flyLayer.dataset.ready = "true"
       }
@@ -1025,7 +1019,7 @@ export function PaymentSuccessJarAnimation({
       return () => {
         runIdRef.current += 1
         ctx.revert()
-        forceEmptyState(root, jarStack, fallingInside, ambient, pileEls, flyLayer, sealRef.current)
+        forceEmptyState(root, jarStack, fallingInside, ambient, pileEls, flyLayer)
         root.dataset.ready = "true"
         flyLayer.dataset.ready = "true"
       }
@@ -1438,8 +1432,6 @@ export function PaymentSuccessJarAnimation({
 
         master.call(() => stopAllCoinSounds(), [], PILE_SETTLE_AT)
 
-        master.add(playSuccessStampAnimation(sealRef.current, false), PILE_SETTLE_AT)
-
         master.call(
           () => {
             if (!isLive()) return
@@ -1485,7 +1477,7 @@ export function PaymentSuccessJarAnimation({
     return () => {
       runIdRef.current += 1
       ctx.revert()
-      forceEmptyState(root, jarStack, fallingInside, ambient, pileEls, flyLayer, sealRef.current)
+      forceEmptyState(root, jarStack, fallingInside, ambient, pileEls, flyLayer)
       root.dataset.ready = "true"
       flyLayer.dataset.ready = "true"
     }
@@ -1556,10 +1548,10 @@ export function PaymentSuccessJarAnimation({
               ))}
             </div>
             <div ref={fallingInsideRef} className={styles.fallingInside} />
-            {variant === "success" ? <SuccessStampSeal ref={sealRef} /> : null}
           </div>
 
           <div className={styles.jarInteriorTint} aria-hidden />
+
 
           <div className={`${styles.layer} ${styles.jarGlassFront}`}>
             <img src={ASSETS.jarGlassFront} alt="" draggable={false} />
