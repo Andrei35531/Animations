@@ -1,0 +1,12 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="132" height="132" viewBox="0 0 132 132" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Group 1">
+<foreignObject x="-12" y="-12" width="156" height="156"><div xmlns="http://www.w3.org/1999/xhtml" style="backdrop-filter:blur(6px);clip-path:url(#bgblur_0_0_6_clip_path);height:100%;width:100%"></div></foreignObject><circle id="Ellipse 2" data-figma-bg-blur-radius="12" cx="66" cy="66" r="66" fill="#28AB4C" fill-opacity="0.1" style="fill:#28AB4C;fill:color(display-p3 0.1569 0.6706 0.2980);fill-opacity:0.1;"/>
+<foreignObject x="-2" y="-2" width="136" height="136"><div xmlns="http://www.w3.org/1999/xhtml" style="backdrop-filter:blur(6px);clip-path:url(#bgblur_1_0_6_clip_path);height:100%;width:100%"></div></foreignObject><circle id="Ellipse 3" data-figma-bg-blur-radius="12" cx="66" cy="66" r="56" fill="#28AB4C" fill-opacity="0.2" style="fill:#28AB4C;fill:color(display-p3 0.1569 0.6706 0.2980);fill-opacity:0.2;"/>
+<foreignObject x="8" y="8" width="116" height="116"><div xmlns="http://www.w3.org/1999/xhtml" style="backdrop-filter:blur(6px);clip-path:url(#bgblur_2_0_6_clip_path);height:100%;width:100%"></div></foreignObject><circle id="Ellipse 4" data-figma-bg-blur-radius="12" cx="66" cy="66" r="46" fill="#28AB4C" fill-opacity="0.3" style="fill:#28AB4C;fill:color(display-p3 0.1569 0.6706 0.2980);fill-opacity:0.3;"/>
+</g>
+<defs>
+<clipPath id="bgblur_0_0_6_clip_path" transform="translate(12 12)"><circle cx="66" cy="66" r="66"/>
+</clipPath><clipPath id="bgblur_1_0_6_clip_path" transform="translate(2 2)"><circle cx="66" cy="66" r="56"/>
+</clipPath><clipPath id="bgblur_2_0_6_clip_path" transform="translate(-8 -8)"><circle cx="66" cy="66" r="46"/>
+</clipPath></defs>
+</svg>
