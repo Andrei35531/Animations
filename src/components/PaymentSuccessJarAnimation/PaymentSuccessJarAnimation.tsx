@@ -204,7 +204,7 @@ export function PaymentSuccessJarAnimation({
   const interiorClipRef = useRef<HTMLDivElement>(null)
   const ambientRef = useRef<HTMLElement | null>(null)
   const flyLayerRef = useRef<HTMLElement | null>(null)
-  const pileRefs = useRef<(HTMLDivElement | null)[]>([])
+  const pileRefs = useRef<(HTMLElement | null)[]>([])
   const runIdRef = useRef(0)
 
   const maskStyle = {
@@ -288,7 +288,7 @@ export function PaymentSuccessJarAnimation({
         }
       } else {
         for (let i = 0; i < RESTING_PILE.length; i += 1) {
-          const el = pileRefs.current[i]
+          const el = pileRefs.current[RESTING_PILE[i]?.id ?? i]
           const coin = RESTING_PILE[i]
           if (!el || !coin) continue
           const brightness = 1 + coin.shade
@@ -1165,50 +1165,64 @@ export function PaymentSuccessJarAnimation({
     const landSwap = (
       spec: FlyingCoinSpec,
       motion: MotionState,
-      visuals: HTMLElement[],
+      coinFly: HTMLElement | null,
+      coinInside: HTMLElement | null,
       match: RestingCoinSpec | null,
     ) => {
       if (!isLive()) return
       landedCount += 1
       const landProgress = progressFromLandedCount(landedCount, totalFlying)
 
-      for (const el of visuals) {
-        gsap.killTweensOf(el)
-        gsap.set(el, { opacity: 0, visibility: "hidden" })
-        el.dataset.airborne = "false"
+      if (coinFly) {
+        gsap.killTweensOf(coinFly)
+        coinFly.remove()
       }
 
-      if (match) {
+      if (match && coinInside) {
         revealed.add(match.id)
-        const el = pileRefs.current[match.id]
-        if (el) {
-          el.style.left = `${match.x * 100}%`
-          el.style.top = `${match.y * 100}%`
-          el.dataset.revealed = "true"
-          const brightness = 1 + match.shade
-          gsap.set(el, {
-            xPercent: -50,
-            yPercent: -50,
-            x: 0,
-            y: 0,
-            rotation: match.rotation,
-            scale: 1,
-            opacity: match.depth,
-            visibility: "visible",
-            filter: `brightness(${brightness})`,
-          })
+        const pileLayer = interiorClip.querySelector(`.${styles.pileLayer}`)
+        const placeholder = pileRefs.current[match.id]
+        const brightness = 1 + match.shade
+
+        coinInside.className = `${styles.coin} ${styles.pileCoin}`
+        coinInside.dataset.revealed = "true"
+        coinInside.dataset.airborne = "false"
+        coinInside.style.width = `${COIN_SIZE * match.scale}px`
+        coinInside.style.height = `${COIN_SIZE * match.scale}px`
+        coinInside.style.left = `${match.x * 100}%`
+        coinInside.style.top = `${match.y * 100}%`
+
+        gsap.killTweensOf(coinInside)
+        gsap.set(coinInside, {
+          xPercent: -50,
+          yPercent: -50,
+          x: 0,
+          y: 0,
+          rotation: match.rotation,
+          scale: 1,
+          opacity: match.depth,
+          visibility: "visible",
+          force3D: false,
+          filter: `brightness(${brightness})`,
+        })
+
+        if (placeholder && placeholder !== coinInside) {
+          placeholder.remove()
         }
+        pileRefs.current[match.id] = coinInside
+        pileLayer?.appendChild(coinInside)
+      } else if (coinInside) {
+        gsap.killTweensOf(coinInside)
+        coinInside.remove()
       }
 
       root.dataset.empty = "false"
-      // Stage unlock from landings — never from clock alone
       revealPileCoins(landProgress, {
         skipIds: match ? new Set([match.id]) : undefined,
       })
 
       if (landedCount >= totalFlying) {
-        // Finish any leftover seats (crown + density fillers)
-        revealPileCoins(1, { forceAll: true })
+        fallingInside.innerHTML = ""
 
         window.setTimeout(() => {
           if (isLive()) stopAllCoinSounds()
@@ -1343,15 +1357,11 @@ export function PaymentSuccessJarAnimation({
         const b = pts[i + 1]
         motion.x = a.x + (b.x - a.x) * s
         motion.y = a.y + (b.y - a.y) * s
-
-        const align = Math.max(0, Math.min(1, (p - 0.78) / 0.22))
-        const flightSpin = spec.startRotation + spec.spinZ * Math.min(1, p / 0.78)
-        motion.rotation = flightSpin + (target.rotation - flightSpin) * align
+        motion.rotation = target.rotation
         motion.scale = 1
         if (p >= 0.992) {
           motion.x = seat.x
           motion.y = seat.y
-          motion.rotation = target.rotation
         }
         clampMotionInsideJar(motion, size)
       }
@@ -1392,11 +1402,8 @@ export function PaymentSuccessJarAnimation({
 
       coinTl.call(() => {
         samplePath(1)
-        syncVisuals()
         if (isLive()) playCoinSound(spec.id, spec)
-        landSwap(spec, motion, [coinFly, coinInside], match)
-        coinFly.remove()
-        coinInside.remove()
+        landSwap(spec, motion, coinFly, coinInside, match)
       })
 
       return coinTl
@@ -1526,11 +1533,11 @@ export function PaymentSuccessJarAnimation({
 
           <div ref={interiorClipRef} className={styles.interiorClip} aria-hidden>
             <div className={styles.pileLayer}>
-              {RESTING_PILE.map((coin, index) => (
+              {RESTING_PILE.map((coin) => (
                 <div
                   key={coin.id}
                   ref={(node) => {
-                    pileRefs.current[index] = node
+                    pileRefs.current[coin.id] = node
                   }}
                   className={`${styles.coin} ${styles.pileCoin}`}
                   data-revealed="false"

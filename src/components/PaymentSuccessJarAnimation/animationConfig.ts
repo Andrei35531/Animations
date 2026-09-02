@@ -452,6 +452,9 @@ function alignFlyingToSeats(seats: RestingCoinSpec[]): FlyingCoinSpec[] {
       ...coin,
       id: i,
       asset: seat.asset,
+      startRotation: seat.rotation,
+      endRotation: seat.rotation,
+      spinZ: 0,
       seat: {
         x: seat.x,
         y: seat.y,
@@ -662,8 +665,8 @@ export const FLYING_LANDING_ORDER: RestingCoinSpec[] = FILL_ORDER
 
 export const FLYING_LANDING_IDS = new Set(FLYING_LANDING_ORDER.map((c) => c.id))
 
-// Rebuild flying stream — one fewer than pile seats: top crown appears on finale reveal
-FLYING_SEQUENCE_FULL = alignFlyingToSeats(FILL_ORDER).slice(0, -1)
+// Every pile seat gets a flying coin — no pop-in at the end
+FLYING_SEQUENCE_FULL = alignFlyingToSeats(FILL_ORDER)
 FLYING_SEQUENCE = pickFlyingSequence()
 FLY_TOTAL = FLYING_SEQUENCE.length
 FILL_STAGE_THRESHOLDS = (
